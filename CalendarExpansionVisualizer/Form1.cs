@@ -1,0 +1,755 @@
+using Microsoft.Identity.Client;
+
+namespace CalendarExpansionVisualizer
+{
+    public partial class Form1 : Form
+    {
+        private string? _accessToken;
+        private AuthFlow _flow = AuthFlow.Delegated;
+        private List<MeetingRow>? _lastCheckRows;
+        private bool _checkMode;
+        private bool _useMicrosoftAppId;
+
+        // Well-known Microsoft first-party public client (Microsoft Graph PowerShell).
+        // Lets a user sign in interactively without registering their own application.
+        private const string MicrosoftGraphPowerShellClientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
+
+        private sealed class MeetingRow
+        {
+            public string Subject { get; set; } = string.Empty;
+            public DateTimeOffset SortKey { get; set; }
+            public Dictionary<DateOnly, CellState> Cells { get; } = new();
+
+            public string EventId { get; set; } = string.Empty;
+            public bool IsRecurring { get; set; }
+            public int InstancesInRange { get; set; }
+            public int ExceptionsInRange { get; set; }
+            public int DeletionsInRange { get; set; }
+        }
+
+        public Form1()
+        {
+            InitializeComponent();
+
+            DateTime start = DateTime.Now.Date;
+            dtpStart.Value = start;
+            dtpEnd.Value = start.AddDays(7);
+
+            txtLogPath.Text = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "CalendarExpansionVisualizer.log");
+
+            UpdateAuthFieldStates();
+
+            dgvEvents.CellDoubleClick += dgvEvents_CellDoubleClick;
+        }
+
+        private void AuthFlowChanged(object? sender, EventArgs e)
+        {
+            _useMicrosoftAppId = rbMicrosoftApp.Checked;
+            _flow = rbApplication.Checked ? AuthFlow.Application : AuthFlow.Delegated;
+            UpdateAuthFieldStates();
+        }
+
+        private void UpdateAuthFieldStates()
+        {
+            bool isApp = _flow == AuthFlow.Application;
+            txtClientSecret.Enabled = isApp;
+            txtUpn.Enabled = isApp;
+            txtRedirectUri.Enabled = !isApp;
+
+            if (_useMicrosoftAppId)
+            {
+                txtClientId.Text = MicrosoftGraphPowerShellClientId;
+                txtClientId.Enabled = false;
+            }
+            else
+            {
+                if (txtClientId.Text == MicrosoftGraphPowerShellClientId)
+                {
+                    txtClientId.Text = string.Empty;
+                }
+                txtClientId.Enabled = true;
+            }
+        }
+
+        private void StartDateChanged(object? sender, EventArgs e)
+        {
+            // Keep the end date within one month of the (new) start date.
+            DateTime maxEnd = dtpStart.Value.AddMonths(1);
+            if (dtpEnd.Value > maxEnd)
+            {
+                dtpEnd.Value = maxEnd;
+            }
+            if (dtpEnd.Value < dtpStart.Value)
+            {
+                dtpEnd.Value = dtpStart.Value;
+            }
+        }
+
+        private async void btnGetToken_Click(object? sender, EventArgs e)
+        {
+            string clientId = _useMicrosoftAppId
+                ? MicrosoftGraphPowerShellClientId
+                : txtClientId.Text.Trim();
+
+            // The Microsoft app-id option can sign in against the "common" authority.
+            string tenantId = string.IsNullOrWhiteSpace(txtTenantId.Text)
+                ? (_useMicrosoftAppId ? "common" : string.Empty)
+                : txtTenantId.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId))
+            {
+                MessageBox.Show(this, "Tenant ID and Client ID are required.",
+                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_flow == AuthFlow.Application &&
+                string.IsNullOrWhiteSpace(txtClientSecret.Text))
+            {
+                MessageBox.Show(this, "Client Secret is required for the application flow.",
+                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_flow == AuthFlow.Application &&
+                string.IsNullOrWhiteSpace(txtUpn.Text))
+            {
+                MessageBox.Show(this, "Mailbox UPN is required for the application flow.",
+                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SetBusy(true, "Acquiring token...");
+            try
+            {
+                AuthenticationResult result = _flow == AuthFlow.Application
+                    ? await AuthService.AcquireApplicationAsync(
+                        tenantId, clientId,
+                        txtClientSecret.Text, CancellationToken.None)
+                    : await AuthService.AcquireDelegatedAsync(
+                        tenantId, clientId,
+                        txtRedirectUri.Text.Trim(), CancellationToken.None);
+
+                _accessToken = result.AccessToken;
+                lblTokenStatus.ForeColor = Color.Green;
+                lblTokenStatus.Text = $"Token acquired (expires {result.ExpiresOn.LocalDateTime:HH:mm})";
+                btnFetch.Enabled = true;
+                btnCheck.Enabled = true;
+                lblStatus.Text = "Token acquired. Ready to fetch calendar.";
+            }
+            catch (MsalException ex)
+            {
+                _accessToken = null;
+                btnFetch.Enabled = false;
+                btnCheck.Enabled = false;
+                lblTokenStatus.ForeColor = Color.Firebrick;
+                lblTokenStatus.Text = "Token failed";
+                MessageBox.Show(this, $"Authentication failed:\n\n{ex.Message}",
+                    "Auth error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                _accessToken = null;
+                btnFetch.Enabled = false;
+                btnCheck.Enabled = false;
+                lblTokenStatus.ForeColor = Color.Firebrick;
+                lblTokenStatus.Text = "Token failed";
+                MessageBox.Show(this, $"Unexpected error:\n\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetBusy(false, null);
+            }
+        }
+
+        private async void btnFetch_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_accessToken))
+            {
+                MessageBox.Show(this, "Acquire a token first.",
+                    "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DateTime start = dtpStart.Value;
+            DateTime end = dtpEnd.Value;
+
+            if (end <= start)
+            {
+                MessageBox.Show(this, "End date must be after the start date.",
+                    "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (end > start.AddMonths(1))
+            {
+                MessageBox.Show(this, "The date range cannot exceed one month.",
+                    "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtLogPath.Text))
+            {
+                MessageBox.Show(this, "Please specify a log file path.",
+                    "Missing log path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SetBusy(true, "Fetching calendar view...");
+            try
+            {
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                List<CalendarInstance> events = await client.GetCalendarViewAsync(
+                    _flow,
+                    _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
+                    new DateTimeOffset(start),
+                    new DateTimeOffset(end),
+                    CancellationToken.None);
+
+                BindResults(events);
+                lblStatus.Text = $"Retrieved {events.Count} expanded event instance(s). " +
+                                 $"Logged to {txtLogPath.Text.Trim()}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to fetch calendar:\n\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                lblStatus.Text = "Fetch failed.";
+            }
+            finally
+            {
+                SetBusy(false, null);
+            }
+        }
+
+        private void BindResults(List<CalendarInstance> events)
+        {
+            var rows = events
+                .Select(ev => new
+                {
+                    ev.Subject,
+                    Start = ev.Start?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? string.Empty,
+                    End = ev.End?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? string.Empty,
+                    ev.Organizer,
+                    ev.Location,
+                    AllDay = ev.IsAllDay,
+                    Recurring = !string.IsNullOrEmpty(ev.SeriesMasterId),
+                    ev.Type
+                })
+                .ToList();
+
+            dgvEvents.DataSource = null;
+            dgvEvents.Rows.Clear();
+            dgvEvents.Columns.Clear();
+            dgvEvents.AutoGenerateColumns = true;
+            dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvEvents.RowHeadersVisible = true;
+            _checkMode = false;
+            _lastCheckRows = null;
+            dgvEvents.DataSource = rows;
+        }
+
+        private async void btnCheck_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_accessToken))
+            {
+                MessageBox.Show(this, "Acquire a token first.",
+                    "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DateTime start = dtpStart.Value;
+            DateTime end = dtpEnd.Value;
+
+            if (end <= start)
+            {
+                MessageBox.Show(this, "End date must be after the start date.",
+                    "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (end > start.AddMonths(1))
+            {
+                MessageBox.Show(this, "The date range cannot exceed one month.",
+                    "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtLogPath.Text))
+            {
+                MessageBox.Show(this, "Please specify a log file path.",
+                    "Missing log path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_flow == AuthFlow.Application && string.IsNullOrWhiteSpace(txtUpn.Text))
+            {
+                MessageBox.Show(this, "Mailbox UPN is required for the application flow.",
+                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SetBusy(true, "Checking calendar...");
+            try
+            {
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
+
+                List<CalendarInstance> instances = await client.GetCalendarViewAsync(
+                    _flow, upn, new DateTimeOffset(start), new DateTimeOffset(end),
+                    CancellationToken.None);
+
+                DateOnly winStart = DateOnly.FromDateTime(start.Date);
+                DateOnly winEnd = DateOnly.FromDateTime(end.Date);
+
+                List<MeetingRow> rows = await BuildMeetingRowsAsync(client, upn, instances, winStart, winEnd);
+                RenderCheckGrid(rows, winStart, winEnd);
+
+                lblStatus.Text = $"Checked {rows.Count} meeting(s)/series across " +
+                                 $"{winStart:M/d}\u2013{winEnd:M/d}. Logged to {txtLogPath.Text.Trim()}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to check calendar:\n\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                lblStatus.Text = "Check failed.";
+            }
+            finally
+            {
+                SetBusy(false, null);
+            }
+        }
+
+        private static async Task<List<MeetingRow>> BuildMeetingRowsAsync(
+            GraphCalendarClient client, string? upn, List<CalendarInstance> instances,
+            DateOnly winStart, DateOnly winEnd)
+        {
+            var rows = new List<MeetingRow>();
+            var masterCache = new Dictionary<string, SeriesMaster?>();
+
+            // Single (non-recurring) events: one row each.
+            foreach (CalendarInstance ev in instances.Where(i => string.IsNullOrEmpty(i.SeriesMasterId)))
+            {
+                var row = new MeetingRow
+                {
+                    Subject = string.IsNullOrEmpty(ev.Subject) ? "(no subject)" : ev.Subject,
+                    SortKey = ev.Start ?? DateTimeOffset.MaxValue,
+                    EventId = ev.Id,
+                    IsRecurring = false,
+                    InstancesInRange = 1
+                };
+
+                DateOnly from = ev.Start.HasValue ? DateOnly.FromDateTime(ev.Start.Value.LocalDateTime) : winStart;
+                DateOnly to = ev.End.HasValue ? DateOnly.FromDateTime(ev.End.Value.LocalDateTime) : from;
+                // Graph end is exclusive at midnight for all-day events; keep single-day sane.
+                if (to > from && ev.IsAllDay)
+                {
+                    to = to.AddDays(-1);
+                }
+
+                for (DateOnly d = from; d <= to; d = d.AddDays(1))
+                {
+                    if (d >= winStart && d <= winEnd)
+                    {
+                        row.Cells[d] = CellState.Normal;
+                    }
+                }
+
+                rows.Add(row);
+            }
+
+            // Recurring series: group instances by their series master.
+            foreach (var group in instances
+                         .Where(i => !string.IsNullOrEmpty(i.SeriesMasterId))
+                         .GroupBy(i => i.SeriesMasterId))
+            {
+                string masterId = group.Key;
+                if (!masterCache.TryGetValue(masterId, out SeriesMaster? master))
+                {
+                    master = await client.GetEventAsync(
+                        AuthFlowOf(upn), upn, masterId, CancellationToken.None);
+                    masterCache[masterId] = master;
+                }
+
+                var actual = new Dictionary<DateOnly, CellState>();
+                foreach (CalendarInstance inst in group)
+                {
+                    if (!inst.Start.HasValue)
+                    {
+                        continue;
+                    }
+                    DateOnly d = DateOnly.FromDateTime(inst.Start.Value.LocalDateTime);
+                    CellState state = string.Equals(inst.Type, "exception", StringComparison.OrdinalIgnoreCase)
+                        ? CellState.Modified
+                        : CellState.Normal;
+
+                    // An exception always wins over a plain occurrence for the same day.
+                    if (state == CellState.Modified || !actual.ContainsKey(d))
+                    {
+                        actual[d] = state;
+                    }
+                }
+
+                string subject = master is not null && !string.IsNullOrEmpty(master.Subject)
+                    ? master.Subject
+                    : group.First().Subject;
+                if (string.IsNullOrEmpty(subject))
+                {
+                    subject = "(no subject)";
+                }
+
+                string recurType = master?.Recurrence?.PatternType
+                                   ?? group.First().Type;
+                if (string.IsNullOrEmpty(recurType))
+                {
+                    recurType = "recurring";
+                }
+
+                var row = new MeetingRow
+                {
+                    Subject = $"{subject} ({recurType})",
+                    EventId = masterId,
+                    IsRecurring = true
+                };
+
+                // Expected pattern dates -> detect deletions.
+                var expected = master?.Recurrence is not null
+                    ? RecurrenceExpander.Expand(master.Recurrence, winStart, winEnd)
+                    : new List<DateOnly>();
+
+                var expectedSet = new HashSet<DateOnly>(expected);
+
+                foreach (DateOnly d in expectedSet)
+                {
+                    row.Cells[d] = actual.TryGetValue(d, out CellState st)
+                        ? st
+                        : CellState.Deleted;
+                }
+
+                // Instances that exist but aren't in the expected set (e.g. moved exceptions).
+                foreach (var kvp in actual)
+                {
+                    if (!expectedSet.Contains(kvp.Key))
+                    {
+                        row.Cells[kvp.Key] = kvp.Value;
+                    }
+                }
+
+                row.InstancesInRange = actual.Count;
+                row.ExceptionsInRange = actual.Values.Count(v => v == CellState.Modified);
+                row.DeletionsInRange = expectedSet.Count(d => !actual.ContainsKey(d));
+
+                // Sort by the true series start (may be years before the window).
+                row.SortKey = master?.Recurrence is not null
+                    ? new DateTimeOffset(master.Recurrence.RangeStart.ToDateTime(TimeOnly.MinValue))
+                    : group.Min(i => i.Start ?? DateTimeOffset.MaxValue);
+
+                rows.Add(row);
+            }
+
+            return rows
+                .OrderBy(r => r.SortKey)
+                .ThenBy(r => r.Subject, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static AuthFlow AuthFlowOf(string? upn)
+            => string.IsNullOrEmpty(upn) ? AuthFlow.Delegated : AuthFlow.Application;
+
+        private void RenderCheckGrid(List<MeetingRow> rows, DateOnly winStart, DateOnly winEnd)
+        {
+            _lastCheckRows = rows;
+            _checkMode = true;
+
+            dgvEvents.DataSource = null;
+            dgvEvents.Rows.Clear();
+            dgvEvents.Columns.Clear();
+            dgvEvents.AutoGenerateColumns = false;
+            dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            dgvEvents.RowHeadersVisible = false;
+
+            var subjectCol = new DataGridViewTextBoxColumn
+            {
+                HeaderText = "Subject",
+                Name = "colSubject",
+                Width = 280,
+                ReadOnly = true,
+                Frozen = true
+            };
+            dgvEvents.Columns.Add(subjectCol);
+
+            var dayColumns = new List<DateOnly>();
+            for (DateOnly d = winStart; d <= winEnd; d = d.AddDays(1))
+            {
+                dayColumns.Add(d);
+                var col = new DataGridViewTextBoxColumn
+                {
+                    HeaderText = d.ToString("M/d"),
+                    Name = "col_" + d.ToString("yyyyMMdd"),
+                    Width = 46,
+                    ReadOnly = true,
+                    SortMode = DataGridViewColumnSortMode.NotSortable
+                };
+                col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                col.DefaultCellStyle.BackColor = Color.Gainsboro;
+                col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                dgvEvents.Columns.Add(col);
+            }
+
+            foreach (MeetingRow meeting in rows)
+            {
+                int rowIndex = dgvEvents.Rows.Add();
+                DataGridViewRow gridRow = dgvEvents.Rows[rowIndex];
+                gridRow.Cells[0].Value = meeting.Subject;
+
+                for (int i = 0; i < dayColumns.Count; i++)
+                {
+                    DataGridViewCell cell = gridRow.Cells[i + 1];
+                    CellState state = meeting.Cells.TryGetValue(dayColumns[i], out CellState s)
+                        ? s
+                        : CellState.None;
+
+                    switch (state)
+                    {
+                        case CellState.Normal:
+                            cell.Value = "X";
+                            cell.Style.BackColor = Color.LimeGreen;
+                            cell.Style.ForeColor = Color.Black;
+                            cell.Style.Font = new Font(dgvEvents.Font.FontFamily, 14F, FontStyle.Bold);
+                            break;
+                        case CellState.Modified:
+                            cell.Value = "M";
+                            cell.Style.BackColor = Color.Gold;
+                            cell.Style.ForeColor = Color.Black;
+                            break;
+                        case CellState.Deleted:
+                            cell.Value = "D";
+                            cell.Style.BackColor = Color.Firebrick;
+                            cell.Style.ForeColor = Color.White;
+                            break;
+                        default:
+                            cell.Value = string.Empty;
+                            cell.Style.BackColor = Color.Gainsboro;
+                            break;
+                    }
+                }
+            }
+        }
+
+
+        private async void dgvEvents_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (!_checkMode || _lastCheckRows is null || e.RowIndex < 0 ||
+                e.RowIndex >= _lastCheckRows.Count)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_accessToken))
+            {
+                return;
+            }
+
+            MeetingRow row = _lastCheckRows[e.RowIndex];
+            if (string.IsNullOrEmpty(row.EventId))
+            {
+                MessageBox.Show(this, "No event id is available for this row.",
+                    "Event Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            SetBusy(true, "Loading event information...");
+            try
+            {
+                string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                EventDetails? details = await client.GetEventDetailsAsync(
+                    _flow, upn, row.EventId, CancellationToken.None);
+
+                if (details is null)
+                {
+                    MessageBox.Show(this, "Could not load event details.",
+                        "Event Information", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                (string body, List<string> warnings) = BuildEventInformation(details, row);
+                using var form = new EventInformationForm(details.Subject, body, warnings);
+                form.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to load event information:\n\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetBusy(false, null);
+            }
+        }
+
+        private static (string Body, List<string> Warnings) BuildEventInformation(
+            EventDetails details, MeetingRow row)
+        {
+            var warnings = new List<string>();
+            var sb = new System.Text.StringBuilder();
+
+            sb.AppendLine("SUBJECT");
+            sb.AppendLine($"  {details.Subject}");
+            sb.AppendLine();
+            sb.AppendLine("TIME");
+            sb.AppendLine($"  Start : {Or(details.Start, "(unknown)")}");
+            sb.AppendLine($"  End   : {Or(details.End, "(unknown)")}");
+            sb.AppendLine();
+
+            sb.AppendLine("IDENTIFIERS");
+            sb.AppendLine($"  Event Id (iCalId)   : {Or(details.Id, "(none)")}");
+            sb.AppendLine($"  iCalUId             : {Or(details.ICalUId, "(none)")}");
+            sb.AppendLine($"  CleanGlobalObjectId : {Or(details.CleanGlobalObjectId, "(none)")}");
+            sb.AppendLine();
+
+            sb.AppendLine("ORGANIZER");
+            sb.AppendLine($"  {Or(details.Organizer, "(none)")}");
+            sb.AppendLine();
+
+            sb.AppendLine($"ATTENDEES ({details.Attendees.Count})");
+            if (details.Attendees.Count == 0)
+            {
+                sb.AppendLine("  (none)");
+            }
+            else
+            {
+                foreach (string a in details.Attendees)
+                {
+                    sb.AppendLine($"  {a}");
+                }
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("RECURRENCE");
+            if (details.Recurrence is { } r)
+            {
+                sb.AppendLine($"  Pattern         : {r.PatternType}");
+                sb.AppendLine($"  Interval        : {r.Interval}");
+                if (r.DaysOfWeek.Count > 0)
+                {
+                    sb.AppendLine($"  Days of week    : {string.Join(", ", r.DaysOfWeek)}");
+                }
+                if (r.DayOfMonth > 0)
+                {
+                    sb.AppendLine($"  Day of month    : {r.DayOfMonth}");
+                }
+                if (r.Month > 0)
+                {
+                    sb.AppendLine($"  Month           : {r.Month}");
+                }
+                if (r.PatternType is "relativeMonthly" or "relativeYearly")
+                {
+                    sb.AppendLine($"  Index           : {r.Index}");
+                }
+                sb.AppendLine($"  First day of wk : {r.FirstDayOfWeek}");
+                sb.AppendLine($"  Range type      : {r.RangeType}");
+                sb.AppendLine($"  Range start     : {r.RangeStart:yyyy-MM-dd}");
+
+                (DateOnly? end, int? total) = RecurrenceExpander.Summarize(r);
+
+                if (r.RangeType == "endDate" && r.RangeEnd is { } re)
+                {
+                    sb.AppendLine($"  Range end       : {re:yyyy-MM-dd}");
+                }
+                else if (r.RangeType == "numbered")
+                {
+                    sb.AppendLine($"  Occurrences     : {r.NumberOfOccurrences}");
+                    if (end is { } computed)
+                    {
+                        sb.AppendLine($"  Computed end    : {computed:yyyy-MM-dd}");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("  Range end       : (not set)");
+                }
+
+                if (total is { } t)
+                {
+                    sb.AppendLine($"  Total occurrences (pattern) : {t}");
+                }
+
+                // Warnings.
+                if (r.RangeType == "noEnd")
+                {
+                    warnings.Add("The recurrence end date is not set (open-ended series).");
+                }
+
+                if (end is { } spanEnd)
+                {
+                    int days = spanEnd.DayNumber - r.RangeStart.DayNumber;
+                    if (days > 366)
+                    {
+                        warnings.Add($"The recurrence pattern spans over a year " +
+                                     $"({r.RangeStart:yyyy-MM-dd} to {spanEnd:yyyy-MM-dd}).");
+                    }
+                }
+                else if (r.RangeType == "noEnd")
+                {
+                    warnings.Add("The recurrence pattern has no end and therefore exceeds one year.");
+                }
+            }
+            else
+            {
+                sb.AppendLine("  (single, non-recurring meeting)");
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("COUNTS (within the selected date range)");
+            sb.AppendLine($"  Instances            : {row.InstancesInRange}");
+            sb.AppendLine($"  Exceptions (modified): {row.ExceptionsInRange}");
+            sb.AppendLine($"  Exception deletions  : {row.DeletionsInRange}");
+
+            return (sb.ToString(), warnings);
+        }
+
+        private static string Or(string value, string fallback)
+            => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+
+        private void btnBrowseLog_Click(object? sender, EventArgs e)
+        {
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Select log file",
+                Filter = "Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*",
+                FileName = Path.GetFileName(txtLogPath.Text),
+                OverwritePrompt = false
+            };
+
+            if (!string.IsNullOrWhiteSpace(txtLogPath.Text))
+            {
+                string? dir = Path.GetDirectoryName(txtLogPath.Text);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                {
+                    dialog.InitialDirectory = dir;
+                }
+            }
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                txtLogPath.Text = dialog.FileName;
+            }
+        }
+
+        private void SetBusy(bool busy, string? status)
+        {
+            UseWaitCursor = busy;
+            grpAuth.Enabled = !busy;
+            grpQuery.Enabled = !busy;
+            if (status is not null)
+            {
+                lblStatus.Text = status;
+            }
+        }
+    }
+}

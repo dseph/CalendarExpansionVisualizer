@@ -1,0 +1,382 @@
+using System.Net.Http.Headers;
+using System.Text.Json;
+
+namespace CalendarExpansionVisualizer
+{
+    internal sealed record CalendarInstance(
+        string Subject,
+        DateTimeOffset? Start,
+        DateTimeOffset? End,
+        string Organizer,
+        string Location,
+        bool IsAllDay,
+        string SeriesMasterId,
+        string Type,
+        string Id);
+
+    internal sealed class EventDetails
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Subject { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Start { get; set; } = string.Empty;
+        public string End { get; set; } = string.Empty;
+        public string Organizer { get; set; } = string.Empty;
+        public List<string> Attendees { get; } = new();
+        public string ICalUId { get; set; } = string.Empty;
+        public string CleanGlobalObjectId { get; set; } = string.Empty;
+        public RecurrenceInfo? Recurrence { get; set; }
+    }
+
+
+    /// <summary>
+    /// Queries the Microsoft Graph calendarView endpoint, which expands recurring
+    /// series into individual event instances for the requested time window.
+    /// </summary>
+    internal sealed class GraphCalendarClient : IDisposable
+    {
+        private const string GraphBase = "https://graph.microsoft.com/v1.0";
+        private readonly HttpClient _http;
+
+        public GraphCalendarClient(string accessToken, string logPath)
+        {
+            var handler = new GraphLoggingHandler(logPath, new HttpClientHandler());
+            _http = new HttpClient(handler);
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+
+        public async Task<List<CalendarInstance>> GetCalendarViewAsync(
+            AuthFlow flow, string? upn, DateTimeOffset start, DateTimeOffset end,
+            CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/calendarView"
+                : $"{GraphBase}/me/calendarView";
+
+            string startUtc = start.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+            string endUtc = end.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+            string? url =
+                $"{basePath}?startDateTime={Uri.EscapeDataString(startUtc)}" +
+                $"&endDateTime={Uri.EscapeDataString(endUtc)}" +
+                "&$select=id,subject,start,end,organizer,location,isAllDay,seriesMasterId,type" +
+                "&$orderby=start/dateTime&$top=100";
+
+            var results = new List<CalendarInstance>();
+
+            while (!string.IsNullOrEmpty(url))
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Prefer", "outlook.timezone=\"UTC\"");
+
+                using var response = await _http.SendAsync(request, cancellationToken);
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new HttpRequestException(
+                        $"Graph returned {(int)response.StatusCode} {response.ReasonPhrase}: {content}");
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                JsonElement root = doc.RootElement;
+
+                if (root.TryGetProperty("value", out JsonElement value) &&
+                    value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        results.Add(Parse(item));
+                    }
+                }
+
+                url = root.TryGetProperty("@odata.nextLink", out JsonElement next)
+                    ? next.GetString()
+                    : null;
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Fetches a single event (typically a recurring series master) including its
+        /// recurrence pattern, so deleted occurrences can be inferred.
+        /// </summary>
+        public async Task<SeriesMaster?> GetEventAsync(
+            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
+                : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
+
+            string url = $"{basePath}?$select=id,subject,type,recurrence";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            JsonElement root = doc.RootElement;
+
+            var master = new SeriesMaster
+            {
+                Id = GetString(root, "id"),
+                Subject = GetString(root, "subject"),
+                Type = GetString(root, "type")
+            };
+
+            if (root.TryGetProperty("recurrence", out var recurrence) &&
+                recurrence.ValueKind == JsonValueKind.Object)
+            {
+                master.Recurrence = ParseRecurrence(recurrence);
+            }
+
+            return master;
+        }
+
+        /// <summary>
+        /// Fetches full details for an event (or series master), including organizer,
+        /// attendees, iCalUId, recurrence and the CleanGlobalObjectId extended property.
+        /// </summary>
+        public async Task<EventDetails?> GetEventDetailsAsync(
+            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
+                : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
+
+            // CleanGlobalObjectId: PSETID_Meeting {6ED8DA90-450B-101B-98DA-00AA003F1305}, id 0x23.
+            const string cleanGlobalObjectIdProp = "Binary {6ED8DA90-450B-101B-98DA-00AA003F1305} Id 0x23";
+            string filter = $"id eq '{cleanGlobalObjectIdProp}'";
+            string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
+
+            string url = $"{basePath}?$select=id,subject,start,end,organizer,attendees,iCalUId,type,recurrence" +
+                         $"&$expand={expand}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"Graph returned {(int)response.StatusCode} {response.ReasonPhrase}: {content}");
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            JsonElement root = doc.RootElement;
+
+            var details = new EventDetails
+            {
+                Id = GetString(root, "id"),
+                Subject = GetString(root, "subject"),
+                Type = GetString(root, "type"),
+                ICalUId = GetString(root, "iCalUId"),
+                Start = GetDateTimeText(root, "start"),
+                End = GetDateTimeText(root, "end")
+            };
+
+            if (root.TryGetProperty("organizer", out var org) &&
+                org.TryGetProperty("emailAddress", out var orgEmail))
+            {
+                string name = GetString(orgEmail, "name");
+                string addr = GetString(orgEmail, "address");
+                details.Organizer = string.IsNullOrEmpty(name) ? addr : $"{name} <{addr}>";
+            }
+
+            if (root.TryGetProperty("attendees", out var attendees) &&
+                attendees.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var att in attendees.EnumerateArray())
+                {
+                    string name = string.Empty;
+                    string addr = string.Empty;
+                    if (att.TryGetProperty("emailAddress", out var ae))
+                    {
+                        name = GetString(ae, "name");
+                        addr = GetString(ae, "address");
+                    }
+                    string attType = GetString(att, "type");
+                    string respStatus = string.Empty;
+                    if (att.TryGetProperty("status", out var st))
+                    {
+                        respStatus = GetString(st, "response");
+                    }
+
+                    string display = string.IsNullOrEmpty(name) ? addr : $"{name} <{addr}>";
+                    details.Attendees.Add($"{display} [{attType}, {respStatus}]");
+                }
+            }
+
+            if (root.TryGetProperty("recurrence", out var recurrence) &&
+                recurrence.ValueKind == JsonValueKind.Object)
+            {
+                details.Recurrence = ParseRecurrence(recurrence);
+            }
+
+            if (root.TryGetProperty("singleValueExtendedProperties", out var svep) &&
+                svep.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var prop in svep.EnumerateArray())
+                {
+                    string value = GetString(prop, "value");
+                    if (!string.IsNullOrEmpty(value))
+                    {
+                        try
+                        {
+                            details.CleanGlobalObjectId = Convert.ToHexString(Convert.FromBase64String(value));
+                        }
+                        catch (FormatException)
+                        {
+                            details.CleanGlobalObjectId = value;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            return details;
+        }
+
+        private static string GetDateTimeText(JsonElement element, string name)
+        {
+            if (element.TryGetProperty(name, out var dateObj) &&
+                dateObj.ValueKind == JsonValueKind.Object)
+            {
+                string dt = GetString(dateObj, "dateTime");
+                string tz = GetString(dateObj, "timeZone");
+                if (!string.IsNullOrEmpty(dt))
+                {
+                    return string.IsNullOrEmpty(tz) ? dt : $"{dt} ({tz})";
+                }
+            }
+            return string.Empty;
+        }
+
+        private static RecurrenceInfo? ParseRecurrence(JsonElement recurrence)
+        {
+            if (!recurrence.TryGetProperty("pattern", out var pattern) ||
+                !recurrence.TryGetProperty("range", out var range))
+            {
+                return null;
+            }
+
+            var info = new RecurrenceInfo
+            {
+                PatternType = GetString(pattern, "type"),
+                Interval = pattern.TryGetProperty("interval", out var iv) && iv.TryGetInt32(out int ivv) ? ivv : 1,
+                DayOfMonth = pattern.TryGetProperty("dayOfMonth", out var dom) && dom.TryGetInt32(out int domv) ? domv : 0,
+                Month = pattern.TryGetProperty("month", out var mo) && mo.TryGetInt32(out int mov) ? mov : 0,
+                Index = GetStringOrDefault(pattern, "index", "first"),
+                FirstDayOfWeek = ParseDay(GetStringOrDefault(pattern, "firstDayOfWeek", "sunday")) ?? DayOfWeek.Sunday,
+                RangeType = GetStringOrDefault(range, "type", "noEnd"),
+                NumberOfOccurrences = range.TryGetProperty("numberOfOccurrences", out var no) && no.TryGetInt32(out int nov) ? nov : 0
+            };
+
+            if (pattern.TryGetProperty("daysOfWeek", out var dow) && dow.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var day in dow.EnumerateArray())
+                {
+                    if (day.ValueKind == JsonValueKind.String && ParseDay(day.GetString()) is { } parsedDay)
+                    {
+                        info.DaysOfWeek.Add(parsedDay);
+                    }
+                }
+            }
+
+            if (DateOnly.TryParse(GetString(range, "startDate"), out DateOnly start))
+            {
+                info.RangeStart = start;
+            }
+
+            if (info.RangeType == "endDate" &&
+                DateOnly.TryParse(GetString(range, "endDate"), out DateOnly end))
+            {
+                info.RangeEnd = end;
+            }
+
+            return info;
+        }
+
+        private static DayOfWeek? ParseDay(string? value) => value?.ToLowerInvariant() switch
+        {
+            "sunday" => DayOfWeek.Sunday,
+            "monday" => DayOfWeek.Monday,
+            "tuesday" => DayOfWeek.Tuesday,
+            "wednesday" => DayOfWeek.Wednesday,
+            "thursday" => DayOfWeek.Thursday,
+            "friday" => DayOfWeek.Friday,
+            "saturday" => DayOfWeek.Saturday,
+            _ => null
+        };
+
+        private static string GetStringOrDefault(JsonElement element, string name, string fallback)
+        {
+            string value = GetString(element, name);
+            return string.IsNullOrEmpty(value) ? fallback : value;
+        }
+
+        private static CalendarInstance Parse(JsonElement item)
+        {
+            string subject = GetString(item, "subject");
+            bool isAllDay = item.TryGetProperty("isAllDay", out var allDay) &&
+                            allDay.ValueKind == JsonValueKind.True;
+            string seriesMasterId = GetString(item, "seriesMasterId");
+            string type = GetString(item, "type");
+
+            string organizer = string.Empty;
+            if (item.TryGetProperty("organizer", out var org) &&
+                org.TryGetProperty("emailAddress", out var email))
+            {
+                organizer = GetString(email, "name");
+                if (string.IsNullOrEmpty(organizer))
+                {
+                    organizer = GetString(email, "address");
+                }
+            }
+
+            string location = string.Empty;
+            if (item.TryGetProperty("location", out var loc))
+            {
+                location = GetString(loc, "displayName");
+            }
+
+            return new CalendarInstance(
+                subject,
+                GetDateTime(item, "start"),
+                GetDateTime(item, "end"),
+                organizer,
+                location,
+                isAllDay,
+                seriesMasterId,
+                type,
+                GetString(item, "id"));
+        }
+
+        private static string GetString(JsonElement element, string name)
+            => element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String
+                ? prop.GetString() ?? string.Empty
+                : string.Empty;
+
+        private static DateTimeOffset? GetDateTime(JsonElement element, string name)
+        {
+            if (element.TryGetProperty(name, out var dateObj) &&
+                dateObj.TryGetProperty("dateTime", out var dt) &&
+                dt.ValueKind == JsonValueKind.String &&
+                DateTime.TryParse(dt.GetString(), out DateTime parsed))
+            {
+                return new DateTimeOffset(DateTime.SpecifyKind(parsed, DateTimeKind.Utc));
+            }
+
+            return null;
+        }
+
+        public void Dispose() => _http.Dispose();
+    }
+}
