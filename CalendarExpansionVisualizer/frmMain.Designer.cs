@@ -1,6 +1,6 @@
 ﻿namespace CalendarExpansionVisualizer
 {
-    partial class Form1
+    partial class frmMain
     {
         private System.ComponentModel.IContainer components = null;
 
@@ -43,6 +43,7 @@
             lblLogPath = new Label();
             txtLogPath = new TextBox();
             btnBrowseLog = new Button();
+            chkEnableLog = new CheckBox();
             dgvEvents = new DataGridView();
             lblStatus = new Label();
             grpAuth.SuspendLayout();
@@ -217,9 +218,10 @@
             grpQuery.Controls.Add(lblLogPath);
             grpQuery.Controls.Add(txtLogPath);
             grpQuery.Controls.Add(btnBrowseLog);
+            grpQuery.Controls.Add(chkEnableLog);
             grpQuery.Location = new Point(12, 228);
             grpQuery.Name = "grpQuery";
-            grpQuery.Size = new Size(860, 130);
+            grpQuery.Size = new Size(860, 150);
             grpQuery.TabIndex = 1;
             grpQuery.TabStop = false;
             grpQuery.Text = "Calendar Query";
@@ -308,6 +310,17 @@
             btnBrowseLog.UseVisualStyleBackColor = true;
             btnBrowseLog.Click += btnBrowseLog_Click;
             //
+            // chkEnableLog
+            //
+            chkEnableLog.AutoSize = true;
+            chkEnableLog.Checked = false;
+            chkEnableLog.Location = new Point(95, 112);
+            chkEnableLog.Name = "chkEnableLog";
+            chkEnableLog.Size = new Size(130, 24);
+            chkEnableLog.TabIndex = 6;
+            chkEnableLog.Text = "Enable logging";
+            chkEnableLog.UseVisualStyleBackColor = true;
+            //
             // dgvEvents
             //
             dgvEvents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
@@ -315,7 +328,7 @@
             dgvEvents.ReadOnly = true;
             dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvEvents.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            dgvEvents.Location = new Point(12, 364);
+            dgvEvents.Location = new Point(12, 384);
             dgvEvents.Name = "dgvEvents";
             dgvEvents.RowHeadersWidth = 51;
             dgvEvents.Size = new Size(860, 290);
@@ -379,6 +392,7 @@
         private Label lblLogPath;
         private TextBox txtLogPath;
         private Button btnBrowseLog;
+        private CheckBox chkEnableLog;
         private DataGridView dgvEvents;
         private Label lblStatus;
     }
