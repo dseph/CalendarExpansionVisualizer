@@ -2,7 +2,7 @@ using Microsoft.Identity.Client;
 
 namespace CalendarExpansionVisualizer
 {
-    public partial class Form1 : Form
+    public partial class frmMain : Form
     {
         private string? _accessToken;
         private AuthFlow _flow = AuthFlow.Delegated;
@@ -27,7 +27,7 @@ namespace CalendarExpansionVisualizer
             public int DeletionsInRange { get; set; }
         }
 
-        public Form1()
+        public frmMain()
         {
             InitializeComponent();
 
@@ -201,7 +201,7 @@ namespace CalendarExpansionVisualizer
             SetBusy(true, "Fetching calendar view...");
             try
             {
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
                 List<CalendarInstance> events = await client.GetCalendarViewAsync(
                     _flow,
                     _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
@@ -211,7 +211,7 @@ namespace CalendarExpansionVisualizer
 
                 BindResults(events);
                 lblStatus.Text = $"Retrieved {events.Count} expanded event instance(s). " +
-                                 $"Logged to {txtLogPath.Text.Trim()}";
+                                 (chkEnableLog.Checked ? $"Logged to {txtLogPath.Text.Trim()}" : "Logging disabled.");
             }
             catch (Exception ex)
             {
@@ -295,7 +295,7 @@ namespace CalendarExpansionVisualizer
             SetBusy(true, "Checking calendar...");
             try
             {
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
 
                 List<CalendarInstance> instances = await client.GetCalendarViewAsync(
@@ -309,7 +309,8 @@ namespace CalendarExpansionVisualizer
                 RenderCheckGrid(rows, winStart, winEnd);
 
                 lblStatus.Text = $"Checked {rows.Count} meeting(s)/series across " +
-                                 $"{winStart:M/d}\u2013{winEnd:M/d}. Logged to {txtLogPath.Text.Trim()}";
+                                 $"{winStart:M/d}\u2013{winEnd:M/d}. " +
+                                 (chkEnableLog.Checked ? $"Logged to {txtLogPath.Text.Trim()}" : "Logging disabled.");
             }
             catch (Exception ex)
             {
@@ -328,7 +329,24 @@ namespace CalendarExpansionVisualizer
             DateOnly winStart, DateOnly winEnd)
         {
             var rows = new List<MeetingRow>();
-            var masterCache = new Dictionary<string, SeriesMaster?>();
+
+            // All series masters in the mailbox, so we can also show series that are active
+            // over the window but have no instance inside it (they never appear in calendarView).
+            // Best-effort: if this listing fails it must not break the core processing below.
+            List<SeriesMaster> allMasters;
+            try
+            {
+                allMasters = await client.GetSeriesMastersAsync(
+                    AuthFlowOf(upn), upn, CancellationToken.None);
+            }
+            catch
+            {
+                allMasters = new List<SeriesMaster>();
+            }
+
+            var masterCache = allMasters
+                .GroupBy(m => m.Id)
+                .ToDictionary(g => g.Key, g => (SeriesMaster?)g.First());
 
             // Single (non-recurring) events: one row each.
             foreach (CalendarInstance ev in instances.Where(i => string.IsNullOrEmpty(i.SeriesMasterId)))
@@ -450,10 +468,70 @@ namespace CalendarExpansionVisualizer
                 rows.Add(row);
             }
 
+            // Series that are active over the window but have no instance inside it
+            // (e.g. a yearly March meeting when viewing June). These never come back from
+            // calendarView, so add them explicitly from the series-master list.
+            var seenMasterIds = new HashSet<string>(
+                instances.Where(i => !string.IsNullOrEmpty(i.SeriesMasterId))
+                         .Select(i => i.SeriesMasterId));
+
+            foreach (SeriesMaster master in allMasters)
+            {
+                if (master.Recurrence is null ||
+                    string.IsNullOrEmpty(master.Id) ||
+                    seenMasterIds.Contains(master.Id) ||
+                    !RecurrenceOverlaps(master.Recurrence, winStart, winEnd))
+                {
+                    continue;
+                }
+
+                string subject = string.IsNullOrEmpty(master.Subject) ? "(no subject)" : master.Subject;
+                string recurType = string.IsNullOrEmpty(master.Recurrence.PatternType)
+                    ? "recurring"
+                    : master.Recurrence.PatternType;
+
+                var row = new MeetingRow
+                {
+                    Subject = $"{subject} ({recurType})",
+                    EventId = master.Id,
+                    IsRecurring = true,
+                    SortKey = new DateTimeOffset(master.Recurrence.RangeStart.ToDateTime(TimeOnly.MinValue))
+                };
+
+                // No actual instances -> any pattern date in the window is a deletion; if the
+                // pattern yields no date in the window the row stays entirely grey.
+                var expected = RecurrenceExpander.Expand(master.Recurrence, winStart, winEnd);
+                foreach (DateOnly d in expected)
+                {
+                    row.Cells[d] = CellState.Deleted;
+                }
+                row.InstancesInRange = 0;
+                row.ExceptionsInRange = 0;
+                row.DeletionsInRange = expected.Count;
+
+                rows.Add(row);
+            }
+
             return rows
                 .OrderBy(r => r.SortKey)
                 .ThenBy(r => r.Subject, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        private static bool RecurrenceOverlaps(RecurrenceInfo r, DateOnly winStart, DateOnly winEnd)
+        {
+            if (r.RangeStart > winEnd)
+            {
+                return false;
+            }
+
+            (DateOnly? end, _) = RecurrenceExpander.Summarize(r);
+            if (end is { } effectiveEnd && effectiveEnd < winStart)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static AuthFlow AuthFlowOf(string? upn)
@@ -565,7 +643,7 @@ namespace CalendarExpansionVisualizer
             try
             {
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim());
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
                 EventDetails? details = await client.GetEventDetailsAsync(
                     _flow, upn, row.EventId, CancellationToken.None);
 

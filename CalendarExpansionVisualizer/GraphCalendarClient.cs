@@ -38,9 +38,9 @@ namespace CalendarExpansionVisualizer
         private const string GraphBase = "https://graph.microsoft.com/v1.0";
         private readonly HttpClient _http;
 
-        public GraphCalendarClient(string accessToken, string logPath)
+        public GraphCalendarClient(string accessToken, string logPath, bool logEnabled)
         {
-            var handler = new GraphLoggingHandler(logPath, new HttpClientHandler());
+            var handler = new GraphLoggingHandler(logPath, logEnabled, new HttpClientHandler());
             _http = new HttpClient(handler);
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -138,6 +138,74 @@ namespace CalendarExpansionVisualizer
             }
 
             return master;
+        }
+
+        /// <summary>
+        /// Lists every recurring series master in the mailbox (regardless of date), so
+        /// that series which are active over the selected window but have no instance
+        /// inside it (e.g. a yearly March meeting viewed in June) can still be shown.
+        /// </summary>
+        public async Task<List<SeriesMaster>> GetSeriesMastersAsync(
+            AuthFlow flow, string? upn, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events"
+                : $"{GraphBase}/me/events";
+
+            string? url = $"{basePath}?$select=id,subject,type,recurrence&$top=100";
+
+            var results = new List<SeriesMaster>();
+            int pageGuard = 0;
+
+            while (!string.IsNullOrEmpty(url) && pageGuard++ < 200)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                using var response = await _http.SendAsync(request, cancellationToken);
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new HttpRequestException(
+                        $"Graph returned {(int)response.StatusCode} {response.ReasonPhrase}: {content}");
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                JsonElement root = doc.RootElement;
+
+                if (root.TryGetProperty("value", out JsonElement value) &&
+                    value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        // The /events collection returns seriesMasters and singleInstances;
+                        // filter to masters client-side ($filter on 'type' is not supported).
+                        if (!string.Equals(GetString(item, "type"), "seriesMaster",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var master = new SeriesMaster
+                        {
+                            Id = GetString(item, "id"),
+                            Subject = GetString(item, "subject"),
+                            Type = GetString(item, "type")
+                        };
+                        if (item.TryGetProperty("recurrence", out var rec) &&
+                            rec.ValueKind == JsonValueKind.Object)
+                        {
+                            master.Recurrence = ParseRecurrence(rec);
+                        }
+                        results.Add(master);
+                    }
+                }
+
+                url = root.TryGetProperty("@odata.nextLink", out JsonElement next)
+                    ? next.GetString()
+                    : null;
+            }
+
+            return results;
         }
 
         /// <summary>

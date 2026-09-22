@@ -11,16 +11,22 @@ namespace CalendarExpansionVisualizer
     {
         private static readonly SemaphoreSlim FileLock = new(1, 1);
         private readonly string _logPath;
+        private readonly bool _enabled;
 
-        public GraphLoggingHandler(string logPath, HttpMessageHandler innerHandler)
+        public GraphLoggingHandler(string logPath, bool enabled, HttpMessageHandler innerHandler)
             : base(innerHandler)
         {
             _logPath = logPath;
+            _enabled = enabled;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (!_enabled)
+            {
+                return await base.SendAsync(request, cancellationToken);
+            }
             var sb = new StringBuilder();
             sb.AppendLine("==================================================================");
             sb.AppendLine($"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz}] REQUEST");

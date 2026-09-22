@@ -40,3 +40,18 @@ Insead of showing a small "x" when the event cell is green, show a large "X".
 make the grid resizalbe.
 
 ------------------------------------------------------------------------
+
+[2026-09-22 19:17] Prompt 7:
+The code is not accounting for events which started outside of the delected date range but cross over the selected date range.  I selected a date range in June but it did not show a line for yearly unending recurring meeting which is in March.
+
+------------------------------------------------------------------------
+
+[2026-09-22 19:23] Prompt 8:
+You broke the code.  All the events, exceptions and deletions are missing.  Go back and their processing back in
+
+------------------------------------------------------------------------
+[2026-09-22 19:32] Prompt 9:
+add a checkbox for enabling logging - default is false, checked will log and unchecked will not log.
+
+------------------------------------------------------------------------
+
