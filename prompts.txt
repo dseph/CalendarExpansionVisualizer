@@ -103,3 +103,13 @@ I need EventInformationForm to be a form which has all the controls on the form 
 
 ------------------------------------------------------------------------
 
+[2026-09-23 00:01] Prompt 19:
+at the bottom of EventInformationForm add a button called "List Recurrence Changes"  and when pressed, it will display a window with a scrolling text box .  Add 3 radio buttons called "List Exceptions", "List Deletions" and "List  Exceptions and Deletions".  Add a button called "List"
+When "List Exceptions" is selected and "List" is clicked, list all the exception information on all exceptions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.
+When "List Deletions" is selected and "List" is clicked, list all the Deletions information on all Deletions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.
+When "List  Exceptions and Deletions is selected and "List" is clicked, list all the Exceptions and Deletions information on all Deletions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.  Below the date range, display "Deletion" or "Exception" depending upon the data.  Show in order of the newest to the oldest.
+Ask me questions if anything is unclear.
+This application needs to work with Commercial, GCC and GCCH and DOD tenants - so add any fields to the form and other code to support this.
+
+------------------------------------------------------------------------
+

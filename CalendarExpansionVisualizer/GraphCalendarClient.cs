@@ -38,6 +38,13 @@ namespace CalendarExpansionVisualizer
         // Every changed occurrence (all exceptions and all deletions) across the entire
         // series, parsed from the master's recurrence blob. Independent of any date window.
         public List<RecurChange> SeriesChanges { get; } = new();
+
+        // Size of the calendar (master) record on the server, from PidTagMessageSize.
+        public long? MessageSize { get; set; }
+
+        // Attachment summary for the calendar record.
+        public int? AttachmentCount { get; set; }
+        public long? AttachmentsTotalSize { get; set; }
     }
 
 
@@ -47,11 +54,13 @@ namespace CalendarExpansionVisualizer
     /// </summary>
     internal sealed class GraphCalendarClient : IDisposable
     {
-        private const string GraphBase = "https://graph.microsoft.com/v1.0";
+        private readonly string GraphBase;
         private readonly HttpClient _http;
 
-        public GraphCalendarClient(string accessToken, string logPath, bool logEnabled)
+        public GraphCalendarClient(string accessToken, string logPath, bool logEnabled,
+            string graphRoot = "https://graph.microsoft.com")
         {
+            GraphBase = $"{graphRoot.TrimEnd('/')}/v1.0";
             var handler = new GraphLoggingHandler(logPath, logEnabled, new HttpClientHandler());
             _http = new HttpClient(handler);
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -241,8 +250,8 @@ namespace CalendarExpansionVisualizer
             string filter = $"id eq '{cleanGlobalObjectIdProp}'";
             string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
 
-            string url = $"{basePath}?$select=id,subject,start,end,organizer,attendees,iCalUId,type,recurrence" +
-                         $"&$expand={expand}";
+            string url = $"{basePath}?$select=id,subject,start,end,organizer,attendees,iCalUId,type,recurrence,hasAttachments" +
+                         $"&$expand={expand},attachments($select=id,name,size)";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             using var response = await _http.SendAsync(request, cancellationToken);
@@ -305,6 +314,23 @@ namespace CalendarExpansionVisualizer
                 details.Recurrence = ParseRecurrence(recurrence);
             }
 
+            if (root.TryGetProperty("attachments", out var atts) &&
+                atts.ValueKind == JsonValueKind.Array)
+            {
+                int count = 0;
+                long totalSize = 0;
+                foreach (var att in atts.EnumerateArray())
+                {
+                    count++;
+                    if (att.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long attSize))
+                    {
+                        totalSize += attSize;
+                    }
+                }
+                details.AttachmentCount = count;
+                details.AttachmentsTotalSize = totalSize;
+            }
+
             if (root.TryGetProperty("singleValueExtendedProperties", out var svep) &&
                 svep.ValueKind == JsonValueKind.Array)
             {
@@ -336,6 +362,9 @@ namespace CalendarExpansionVisualizer
             {
                 await PopulateSeriesCountsAsync(basePath, details, cancellationToken);
             }
+
+            // Size of the calendar record itself (PidTagMessageSize). Single targeted request.
+            await PopulateMessageSizeAsync(basePath, details, cancellationToken);
 
             return details;
         }
@@ -402,6 +431,47 @@ namespace CalendarExpansionVisualizer
                 catch (FormatException)
                 {
                     // Leave counts unset if the blob can't be decoded.
+                }
+                break;
+            }
+        }
+
+        /// <summary>
+        /// Reads PidTagMessageSize (PtypInteger32 0x0E08), the size in bytes of the
+        /// calendar record on the server, using its own single-property request.
+        /// </summary>
+        private async Task PopulateMessageSizeAsync(
+            string basePath, EventDetails details, CancellationToken cancellationToken)
+        {
+            const string messageSizeProp = "Long 0x0E08";
+            string filter = $"id eq '{messageSizeProp}'";
+            string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
+            string url = $"{basePath}?$select=id&$expand={expand}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            JsonElement root = doc.RootElement;
+
+            if (!root.TryGetProperty("singleValueExtendedProperties", out var svep) ||
+                svep.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (var prop in svep.EnumerateArray())
+            {
+                string value = GetString(prop, "value");
+                if (long.TryParse(value, out long size))
+                {
+                    details.MessageSize = size;
                 }
                 break;
             }
