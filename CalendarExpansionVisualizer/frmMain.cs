@@ -404,7 +404,8 @@ namespace CalendarExpansionVisualizer
                     SortKey = ev.Start ?? DateTimeOffset.MaxValue,
                     EventId = ev.Id,
                     IsRecurring = false,
-                    InstancesInRange = 1
+                    InstancesInRange = 1,
+                    SubjectColor = OversizedMaster(ev.MessageSize) ? Color.Red : Color.Black
                 };
 
                 DateOnly from = ev.Start.HasValue ? DateOnly.FromDateTime(ev.Start.Value.LocalDateTime) : winStart;
@@ -473,12 +474,21 @@ namespace CalendarExpansionVisualizer
                     recurType = "recurring";
                 }
 
+                if (master?.Recurrence is not null && master.ExceptionCount is null &&
+                    !string.IsNullOrEmpty(masterId))
+                {
+                    master.ExceptionCount = await client.GetSeriesExceptionCountAsync(
+                        AuthFlowOf(upn), upn, masterId, CancellationToken.None);
+                }
+
                 var row = new MeetingRow
                 {
                     Subject = $"{subject} ({recurType})",
                     EventId = masterId,
                     IsRecurring = true,
-                    SubjectColor = SubjectColorFor(master?.Recurrence)
+                    SubjectColor = OversizedMaster(master?.MessageSize) || ManyExceptions(master?.ExceptionCount)
+                        ? Color.Red
+                        : SubjectColorFor(master?.Recurrence)
                 };
 
                 // Expected pattern dates -> detect deletions.
@@ -538,12 +548,20 @@ namespace CalendarExpansionVisualizer
                     ? "recurring"
                     : master.Recurrence.PatternType;
 
+                if (master.ExceptionCount is null)
+                {
+                    master.ExceptionCount = await client.GetSeriesExceptionCountAsync(
+                        AuthFlowOf(upn), upn, master.Id, CancellationToken.None);
+                }
+
                 var row = new MeetingRow
                 {
                     Subject = $"{subject} ({recurType})",
                     EventId = master.Id,
                     IsRecurring = true,
-                    SubjectColor = SubjectColorFor(master.Recurrence),
+                    SubjectColor = OversizedMaster(master.MessageSize) || ManyExceptions(master.ExceptionCount)
+                        ? Color.Red
+                        : SubjectColorFor(master.Recurrence),
                     SortKey = new DateTimeOffset(master.Recurrence.RangeStart.ToDateTime(TimeOnly.MinValue))
                 };
 
@@ -566,6 +584,18 @@ namespace CalendarExpansionVisualizer
                 .ThenBy(r => r.Subject, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+
+        /// <summary>
+        /// True when the calendar master record is 50 MB or larger.
+        /// </summary>
+        private static bool OversizedMaster(long? messageSize)
+            => messageSize is { } size && size >= 50L * 1024L * 1024L;
+
+        /// <summary>
+        /// True when the entire series has more than 30 exceptions.
+        /// </summary>
+        private static bool ManyExceptions(int? exceptionCount)
+            => exceptionCount is { } count && count > 30;
 
         /// <summary>
         /// Colour for a recurring meeting's Subject based on how long the series runs:
@@ -760,7 +790,7 @@ namespace CalendarExpansionVisualizer
                 (string body, string title) = RecurrenceChangeReport.Build(
                     details.Subject, details.SeriesChanges, wantExceptions, wantDeletions, showKindLabel);
 
-                using var form = new EventInformationForm(title, body, Array.Empty<string>());
+                using var form = new EventInformationForm(title, body, Array.Empty<WarningLine>());
                 form.ShowDialog(this);
 
                 int shown = details.SeriesChanges.Count(c =>
@@ -841,7 +871,7 @@ namespace CalendarExpansionVisualizer
                     row.RangeAttachmentsComputed = true;
                 }
 
-                (string body, List<string> warnings) = BuildEventInformation(details, row);
+                (string body, List<WarningLine> warnings) = BuildEventInformation(details, row);
                 using var form = new EventInformationForm(details.Subject, body, warnings);
                 form.SetRecurrenceChanges(details.Subject, details.SeriesChanges);
                 form.ShowDialog(this);
@@ -949,10 +979,10 @@ namespace CalendarExpansionVisualizer
             return $"Entire event span: {span}   |   Instances/Exceptions/Deletions: (not available)";
         }
 
-        private static (string Body, List<string> Warnings) BuildEventInformation(
+        private static (string Body, List<WarningLine> Warnings) BuildEventInformation(
             EventDetails details, MeetingRow row)
         {
-            var warnings = new List<string>();
+            var warnings = new List<WarningLine>();
             var sb = new System.Text.StringBuilder();
 
             sb.AppendLine("SUBJECT");
@@ -992,6 +1022,64 @@ namespace CalendarExpansionVisualizer
             sb.AppendLine($"  Attachments          : {(details.AttachmentCount?.ToString() ?? "(unknown)")}");
             sb.AppendLine($"  Attachments size     : {FormatSize(details.AttachmentsTotalSize)}");
             sb.AppendLine();
+
+            // Calendar-master size warnings (tiered, coloured).
+            if (details.MessageSize is { } masterSize)
+            {
+                const long mb = 1024L * 1024L;
+                if (masterSize >= 50 * mb)
+                {
+                    warnings.Add(new WarningLine("Calendar master is over 50+ megabytes", Color.Red));
+                }
+                else if (masterSize >= 25 * mb)
+                {
+                    warnings.Add(new WarningLine("Calendar master is over 25+ megabytes", Color.Orange));
+                }
+                else if (masterSize >= 10 * mb)
+                {
+                    warnings.Add(new WarningLine("Calendar master is over 10+ megabytes", Color.Cyan));
+                }
+            }
+
+            // Whole-series exception-count warnings (tiered, coloured).
+            if (details.HasSeriesCounts && details.TotalExceptions is { } seriesExceptions)
+            {
+                if (seriesExceptions >= 30)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 30+ exceptions for the series.", Color.Orange));
+                }
+                else if (seriesExceptions >= 20)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 20+ exceptions for the series.", Color.Orange));
+                }
+                else if (seriesExceptions >= 10)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 10+ exceptions for the series.", Color.Cyan));
+                }
+            }
+
+            // Whole-series deletion-count warnings (tiered, coloured).
+            if (details.HasSeriesCounts && details.TotalDeletions is { } seriesDeletions)
+            {
+                if (seriesDeletions >= 30)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 30+ deletions for the series.", Color.Orange));
+                }
+                else if (seriesDeletions >= 20)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 20+ deletions for the series.", Color.Orange));
+                }
+                else if (seriesDeletions >= 10)
+                {
+                    warnings.Add(new WarningLine(
+                        "There are over 10+ deletions for the series.", Color.Cyan));
+                }
+            }
 
             sb.AppendLine("RECURRENCE");
             if (details.Recurrence is { } r)
@@ -1045,7 +1133,8 @@ namespace CalendarExpansionVisualizer
                 // Warnings.
                 if (r.RangeType == "noEnd")
                 {
-                    warnings.Add("The recurrence end date is not set (open-ended series).");
+                    warnings.Add(new WarningLine(
+                        "The recurrence end date is not set (open-ended series).", Color.Red));
                 }
 
                 if (end is { } spanEnd)
@@ -1053,13 +1142,14 @@ namespace CalendarExpansionVisualizer
                     int days = spanEnd.DayNumber - r.RangeStart.DayNumber;
                     if (days > 366)
                     {
-                        warnings.Add($"The recurrence pattern spans over a year " +
-                                     $"({r.RangeStart:yyyy-MM-dd} to {spanEnd:yyyy-MM-dd}).");
+                        warnings.Add(new WarningLine($"The recurrence pattern spans over a year " +
+                                     $"({r.RangeStart:yyyy-MM-dd} to {spanEnd:yyyy-MM-dd}).", Color.Red));
                     }
                 }
                 else if (r.RangeType == "noEnd")
                 {
-                    warnings.Add("The recurrence pattern has no end and therefore exceeds one year.");
+                    warnings.Add(new WarningLine(
+                        "The recurrence pattern has no end and therefore exceeds one year.", Color.Red));
                 }
             }
             else

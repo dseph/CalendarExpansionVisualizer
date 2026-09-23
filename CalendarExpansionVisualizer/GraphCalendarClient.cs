@@ -12,7 +12,8 @@ namespace CalendarExpansionVisualizer
         bool IsAllDay,
         string SeriesMasterId,
         string Type,
-        string Id);
+        string Id,
+        long? MessageSize = null);
 
     internal sealed class EventDetails
     {
@@ -66,6 +67,11 @@ namespace CalendarExpansionVisualizer
     {
         private readonly string GraphBase;
         private readonly HttpClient _http;
+
+        // PidTagMessageSize (PtypInteger32 0x0E08): size in bytes of the item on the server.
+        private const string MessageSizeFilter = "id eq 'Long 0x0E08'";
+        private static readonly string MessageSizeExpand =
+            "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(MessageSizeFilter) + ")";
 
         public GraphCalendarClient(string accessToken, string logPath, bool logEnabled,
             string graphRoot = "https://graph.microsoft.com")
@@ -146,7 +152,7 @@ namespace CalendarExpansionVisualizer
                 ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
                 : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
 
-            string url = $"{basePath}?$select=id,subject,type,recurrence";
+            string url = $"{basePath}?$select=id,subject,type,recurrence&$expand={MessageSizeExpand}";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             using var response = await _http.SendAsync(request, cancellationToken);
@@ -164,7 +170,8 @@ namespace CalendarExpansionVisualizer
             {
                 Id = GetString(root, "id"),
                 Subject = GetString(root, "subject"),
-                Type = GetString(root, "type")
+                Type = GetString(root, "type"),
+                MessageSize = ParseMessageSize(root)
             };
 
             if (root.TryGetProperty("recurrence", out var recurrence) &&
@@ -188,7 +195,7 @@ namespace CalendarExpansionVisualizer
                 ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events"
                 : $"{GraphBase}/me/events";
 
-            string? url = $"{basePath}?$select=id,subject,type,recurrence&$top=100";
+            string? url = $"{basePath}?$select=id,subject,type,recurrence&$expand={MessageSizeExpand}&$top=100";
 
             var results = new List<SeriesMaster>();
             int pageGuard = 0;
@@ -225,7 +232,8 @@ namespace CalendarExpansionVisualizer
                         {
                             Id = GetString(item, "id"),
                             Subject = GetString(item, "subject"),
-                            Type = GetString(item, "type")
+                            Type = GetString(item, "type"),
+                            MessageSize = ParseMessageSize(item)
                         };
                         if (item.TryGetProperty("recurrence", out var rec) &&
                             rec.ValueKind == JsonValueKind.Object)
@@ -452,6 +460,66 @@ namespace CalendarExpansionVisualizer
                 }
                 break;
             }
+        }
+
+        /// <summary>
+        /// Reads the whole-series exception count for a series master directly from its
+        /// PidLidAppointmentRecur blob. Returns null if it can't be determined. Uses a
+        /// single targeted extended-property request so expansion is reliable.
+        /// </summary>
+        public async Task<int?> GetSeriesExceptionCountAsync(
+            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
+                : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
+
+            const string apptRecurProp = "Binary {00062002-0000-0000-C000-000000000046} Id 0x8216";
+            string filter = $"id eq '{apptRecurProp}'";
+            string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
+            string url = $"{basePath}?$select=id&$expand={expand}";
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                using var response = await _http.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(content);
+                JsonElement root = doc.RootElement;
+
+                if (!root.TryGetProperty("singleValueExtendedProperties", out var svep) ||
+                    svep.ValueKind != JsonValueKind.Array)
+                {
+                    return null;
+                }
+
+                foreach (var prop in svep.EnumerateArray())
+                {
+                    string value = GetString(prop, "value");
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        continue;
+                    }
+
+                    byte[] blob = Convert.FromBase64String(value);
+                    if (AppointmentRecurParser.TryParse(blob, out SeriesCounts counts))
+                    {
+                        return counts.Exceptions;
+                    }
+                    break;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or FormatException or JsonException)
+            {
+                // Best-effort: leave the count unknown.
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -889,7 +957,31 @@ namespace CalendarExpansionVisualizer
                 isAllDay,
                 seriesMasterId,
                 type,
-                GetString(item, "id"));
+                GetString(item, "id"),
+                ParseMessageSize(item));
+        }
+
+        /// <summary>
+        /// Reads the PidTagMessageSize value (in bytes) from an item's expanded
+        /// singleValueExtendedProperties, or null when it's not present.
+        /// </summary>
+        private static long? ParseMessageSize(JsonElement element)
+        {
+            if (!element.TryGetProperty("singleValueExtendedProperties", out var svep) ||
+                svep.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var prop in svep.EnumerateArray())
+            {
+                if (long.TryParse(GetString(prop, "value"), out long size))
+                {
+                    return size;
+                }
+            }
+
+            return null;
         }
 
         private static string GetString(JsonElement element, string name)

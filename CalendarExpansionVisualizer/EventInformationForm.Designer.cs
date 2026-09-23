@@ -29,7 +29,7 @@ namespace CalendarExpansionVisualizer
         private void InitializeComponent()
         {
             txtBody = new TextBox();
-            txtWarn = new TextBox();
+            txtWarn = new RichTextBox();
             pnlButtons = new Panel();
             btnClose = new Button();
             btnListChanges = new Button();
@@ -60,10 +60,9 @@ namespace CalendarExpansionVisualizer
             txtWarn.ForeColor = Color.Red;
             txtWarn.Location = new Point(0, 664);
             txtWarn.Margin = new Padding(4);
-            txtWarn.Multiline = true;
             txtWarn.Name = "txtWarn";
             txtWarn.ReadOnly = true;
-            txtWarn.ScrollBars = ScrollBars.Vertical;
+            txtWarn.ScrollBars = RichTextBoxScrollBars.Vertical;
             txtWarn.Size = new Size(968, 112);
             txtWarn.TabIndex = 1;
             txtWarn.Visible = false;
@@ -139,7 +138,7 @@ namespace CalendarExpansionVisualizer
         #endregion
 
         private TextBox txtBody;
-        private TextBox txtWarn;
+        private RichTextBox txtWarn;
         private Panel pnlButtons;
         private Button btnClose;
         private Button btnListChanges;

@@ -1,9 +1,14 @@
 namespace CalendarExpansionVisualizer
 {
     /// <summary>
+    /// A single warning line and the colour it should be shown in.
+    /// </summary>
+    public readonly record struct WarningLine(string Text, System.Drawing.Color Color);
+
+    /// <summary>
     /// Read-only dialog that displays full information about a meeting or series,
     /// including recurrence, organizer/attendees, identifiers and instance counts.
-    /// Warnings (e.g. recurrence over a year, no end date) are shown in red.
+    /// Warnings (e.g. recurrence over a year, no end date) are shown in colour.
     /// The layout lives in EventInformationForm.Designer.cs so it can be edited in
     /// the Windows Forms designer.
     /// </summary>
@@ -20,7 +25,7 @@ namespace CalendarExpansionVisualizer
             CancelButton = btnClose;
         }
 
-        public EventInformationForm(string title, string body, IReadOnlyList<string> warnings)
+        public EventInformationForm(string title, string body, IReadOnlyList<WarningLine> warnings)
             : this()
         {
             SetContent(title, body, warnings);
@@ -28,21 +33,27 @@ namespace CalendarExpansionVisualizer
 
         /// <summary>
         /// Populates the dialog. The warnings box is only shown when there is at least
-        /// one warning.
+        /// one warning; each warning line is rendered in its own colour.
         /// </summary>
-        public void SetContent(string title, string body, IReadOnlyList<string> warnings)
+        public void SetContent(string title, string body, IReadOnlyList<WarningLine> warnings)
         {
             lblTitle.Text = title;
             txtBody.Text = body;
 
+            txtWarn.Clear();
             if (warnings is { Count: > 0 })
             {
-                txtWarn.Text = string.Join(Environment.NewLine, warnings);
+                foreach (WarningLine w in warnings)
+                {
+                    txtWarn.SelectionStart = txtWarn.TextLength;
+                    txtWarn.SelectionLength = 0;
+                    txtWarn.SelectionColor = w.Color;
+                    txtWarn.AppendText(w.Text + Environment.NewLine);
+                }
                 txtWarn.Visible = true;
             }
             else
             {
-                txtWarn.Text = string.Empty;
                 txtWarn.Visible = false;
             }
         }
