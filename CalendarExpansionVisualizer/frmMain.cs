@@ -25,6 +25,14 @@ namespace CalendarExpansionVisualizer
             public int InstancesInRange { get; set; }
             public int ExceptionsInRange { get; set; }
             public int DeletionsInRange { get; set; }
+
+            // Whole-series totals (across the entire recurrence, not just the window).
+            // Null until computed on demand when the Event Information form is opened.
+            public int? TotalInstances { get; set; }
+            public int? TotalExceptions { get; set; }
+            public int? TotalDeletions { get; set; }
+            public string? TotalScopeNote { get; set; }
+            public bool TotalsComputed { get; set; }
         }
 
         public frmMain()
@@ -137,6 +145,7 @@ namespace CalendarExpansionVisualizer
                 lblTokenStatus.Text = $"Token acquired (expires {result.ExpiresOn.LocalDateTime:HH:mm})";
                 btnFetch.Enabled = true;
                 btnCheck.Enabled = true;
+                btnList.Enabled = true;
                 lblStatus.Text = "Token acquired. Ready to fetch calendar.";
             }
             catch (MsalException ex)
@@ -144,6 +153,7 @@ namespace CalendarExpansionVisualizer
                 _accessToken = null;
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
+                btnList.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
                 MessageBox.Show(this, $"Authentication failed:\n\n{ex.Message}",
@@ -154,6 +164,7 @@ namespace CalendarExpansionVisualizer
                 _accessToken = null;
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
+                btnList.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
                 MessageBox.Show(this, $"Unexpected error:\n\n{ex.Message}",
@@ -174,17 +185,17 @@ namespace CalendarExpansionVisualizer
                 return;
             }
 
-            DateTime start = dtpStart.Value;
-            DateTime end = dtpEnd.Value;
+            DateTime start = dtpStart.Value.Date;
+            DateTime end = dtpEnd.Value.Date.AddDays(1).AddTicks(-1);
 
             if (end <= start)
             {
-                MessageBox.Show(this, "End date must be after the start date.",
+                MessageBox.Show(this, "End date must be on or after the start date.",
                     "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (end > start.AddMonths(1))
+            if (dtpEnd.Value.Date > dtpStart.Value.Date.AddMonths(1))
             {
                 MessageBox.Show(this, "The date range cannot exceed one month.",
                     "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -261,17 +272,17 @@ namespace CalendarExpansionVisualizer
                 return;
             }
 
-            DateTime start = dtpStart.Value;
-            DateTime end = dtpEnd.Value;
+            DateTime start = dtpStart.Value.Date;
+            DateTime end = dtpEnd.Value.Date.AddDays(1).AddTicks(-1);
 
             if (end <= start)
             {
-                MessageBox.Show(this, "End date must be after the start date.",
+                MessageBox.Show(this, "End date must be on or after the start date.",
                     "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (end > start.AddMonths(1))
+            if (dtpEnd.Value.Date > dtpStart.Value.Date.AddMonths(1))
             {
                 MessageBox.Show(this, "The date range cannot exceed one month.",
                     "Invalid range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -618,6 +629,161 @@ namespace CalendarExpansionVisualizer
         }
 
 
+        private async void btnList_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_accessToken))
+            {
+                MessageBox.Show(this, "Acquire a token first.",
+                    "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!_checkMode || _lastCheckRows is null || _lastCheckRows.Count == 0)
+            {
+                MessageBox.Show(this, "Run \"Check\" first, then select a recurring series row to list.",
+                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            int rowIndex = dgvEvents.CurrentCell?.RowIndex ?? -1;
+            if (rowIndex < 0 || rowIndex >= _lastCheckRows.Count)
+            {
+                MessageBox.Show(this, "Select a recurring series row in the grid first.",
+                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            MeetingRow row = _lastCheckRows[rowIndex];
+            if (!row.IsRecurring || string.IsNullOrEmpty(row.EventId))
+            {
+                MessageBox.Show(this, "The selected row is not a recurring series.",
+                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            bool wantExceptions = rbListExceptions.Checked || rbListBoth.Checked;
+            bool wantDeletions = rbListDeletions.Checked || rbListBoth.Checked;
+            bool showKindLabel = rbListBoth.Checked;
+
+            SetBusy(true, "Listing series changes...");
+            try
+            {
+                string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
+                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
+                EventDetails? details = await client.GetEventDetailsAsync(
+                    _flow, upn, row.EventId, CancellationToken.None);
+
+                if (details is null)
+                {
+                    MessageBox.Show(this, "Could not load event details.",
+                        "List", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var selected = details.SeriesChanges
+                    .Where(c => (c.Kind == RecurChangeKind.Exception && wantExceptions) ||
+                                (c.Kind == RecurChangeKind.Deletion && wantDeletions))
+                    // "Date range" is the new range for an exception and the original
+                    // occurrence range for a deletion; sort newest to oldest by it.
+                    .OrderByDescending(c => c.Kind == RecurChangeKind.Exception ? c.Start : c.OriginalStart)
+                    .ToList();
+
+                (string body, string title) = BuildChangeListing(
+                    details.Subject, selected, wantExceptions, wantDeletions, showKindLabel);
+
+                using var form = new EventInformationForm(title, body, Array.Empty<string>());
+                form.ShowDialog(this);
+
+                lblStatus.Text = $"Listed {selected.Count} change(s) for the entire series.";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to list series changes:\n\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetBusy(false, null);
+            }
+        }
+
+        private static (string Body, string Title) BuildChangeListing(
+            string subject, List<RecurChange> changes,
+            bool wantExceptions, bool wantDeletions, bool showKindLabel)
+        {
+            string what = (wantExceptions, wantDeletions) switch
+            {
+                (true, true) => "Exceptions and Deletions",
+                (true, false) => "Exceptions",
+                (false, true) => "Deletions",
+                _ => "Changes"
+            };
+
+            string title = $"{subject} \u2014 {what} (entire series)";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(title);
+            sb.AppendLine($"Total: {changes.Count}   (newest to oldest, whole series including outside the search range)");
+            sb.AppendLine();
+
+            if (changes.Count == 0)
+            {
+                sb.AppendLine($"(no {what.ToLowerInvariant()} found for this series)");
+                return (sb.ToString(), title);
+            }
+
+            foreach (RecurChange c in changes)
+            {
+                // Date range first.
+                if (c.Kind == RecurChangeKind.Exception)
+                {
+                    sb.AppendLine(FormatRange(c.Start, c.End));
+                }
+                else
+                {
+                    sb.AppendLine(FormatRange(c.OriginalStart, c.OriginalEnd));
+                }
+
+                // Then the type label (required when listing both kinds) and details.
+                if (showKindLabel)
+                {
+                    sb.AppendLine(c.Kind == RecurChangeKind.Exception ? "  Exception" : "  Deletion");
+                }
+
+                if (c.Kind == RecurChangeKind.Exception)
+                {
+                    sb.AppendLine($"    Original occurrence : {FormatRange(c.OriginalStart, c.OriginalEnd)}");
+                    if (!string.IsNullOrEmpty(c.Subject))
+                    {
+                        sb.AppendLine($"    Subject override    : {c.Subject}");
+                    }
+                    if (!string.IsNullOrEmpty(c.Location))
+                    {
+                        sb.AppendLine($"    Location override   : {c.Location}");
+                    }
+                    if (string.IsNullOrEmpty(c.Subject) && string.IsNullOrEmpty(c.Location))
+                    {
+                        sb.AppendLine("    (time changed; no subject/location override)");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine($"    Removed occurrence originally on {c.OriginalStart:yyyy-MM-dd}");
+                }
+
+                sb.AppendLine();
+            }
+
+            return (sb.ToString(), title);
+        }
+
+        private static string FormatRange(DateTime start, DateTime end)
+        {
+            return start.Date == end.Date
+                ? $"{start:yyyy-MM-dd HH:mm} \u2013 {end:HH:mm}"
+                : $"{start:yyyy-MM-dd HH:mm} \u2013 {end:yyyy-MM-dd HH:mm}";
+        }
+
         private async void dgvEvents_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
         {
             if (!_checkMode || _lastCheckRows is null || e.RowIndex < 0 ||
@@ -652,6 +818,18 @@ namespace CalendarExpansionVisualizer
                     MessageBox.Show(this, "Could not load event details.",
                         "Event Information", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
+                }
+
+                // The grid only knows counts within the selected window. For the Event
+                // Information form, also show whole-series totals read directly from the
+                // master's stored recurrence blob (no per-instance searching).
+                if (details.Recurrence is not null && !row.TotalsComputed && details.HasSeriesCounts)
+                {
+                    row.TotalInstances = details.TotalInstances;
+                    row.TotalExceptions = details.TotalExceptions;
+                    row.TotalDeletions = details.TotalDeletions;
+                    row.TotalScopeNote = details.TotalScopeNote;
+                    row.TotalsComputed = true;
                 }
 
                 (string body, List<string> warnings) = BuildEventInformation(details, row);
@@ -786,6 +964,28 @@ namespace CalendarExpansionVisualizer
             sb.AppendLine($"  Instances            : {row.InstancesInRange}");
             sb.AppendLine($"  Exceptions (modified): {row.ExceptionsInRange}");
             sb.AppendLine($"  Exception deletions  : {row.DeletionsInRange}");
+
+            if (row.IsRecurring)
+            {
+                sb.AppendLine();
+                string scope = string.IsNullOrEmpty(row.TotalScopeNote)
+                    ? "entire series"
+                    : row.TotalScopeNote;
+                sb.AppendLine($"COUNTS (whole calendar item - {scope})");
+                if (row.TotalsComputed)
+                {
+                    string instances = row.TotalInstances.HasValue
+                        ? row.TotalInstances.Value.ToString()
+                        : "unbounded (no end date)";
+                    sb.AppendLine($"  Instances            : {instances}");
+                    sb.AppendLine($"  Exceptions (modified): {row.TotalExceptions ?? 0}");
+                    sb.AppendLine($"  Exception deletions  : {row.TotalDeletions ?? 0}");
+                }
+                else
+                {
+                    sb.AppendLine("  (not available)");
+                }
+            }
 
             return (sb.ToString(), warnings);
         }

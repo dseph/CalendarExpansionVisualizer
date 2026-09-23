@@ -26,6 +26,18 @@ namespace CalendarExpansionVisualizer
         public string ICalUId { get; set; } = string.Empty;
         public string CleanGlobalObjectId { get; set; } = string.Empty;
         public RecurrenceInfo? Recurrence { get; set; }
+
+        // Whole-series counts read directly from the master's PidLidAppointmentRecur
+        // blob (no per-instance searching). Null when unavailable/not applicable.
+        public int? TotalInstances { get; set; }
+        public int? TotalExceptions { get; set; }
+        public int? TotalDeletions { get; set; }
+        public string? TotalScopeNote { get; set; }
+        public bool HasSeriesCounts { get; set; }
+
+        // Every changed occurrence (all exceptions and all deletions) across the entire
+        // series, parsed from the master's recurrence blob. Independent of any date window.
+        public List<RecurChange> SeriesChanges { get; } = new();
     }
 
 
@@ -68,7 +80,12 @@ namespace CalendarExpansionVisualizer
             while (!string.IsNullOrEmpty(url))
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("Prefer", "outlook.timezone=\"UTC\"");
+                // Request instances in the local time zone so wall-clock dates (including
+                // all-day events at midnight) line up with the recurrence pattern dates.
+                // Forcing UTC shifts all-day/near-midnight occurrences to the wrong calendar
+                // day on machines with a negative UTC offset, which made the last day of the
+                // window falsely appear "deleted" (red).
+                request.Headers.Add("Prefer", $"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"");
 
                 using var response = await _http.SendAsync(request, cancellationToken);
                 string content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -294,22 +311,100 @@ namespace CalendarExpansionVisualizer
                 foreach (var prop in svep.EnumerateArray())
                 {
                     string value = GetString(prop, "value");
-                    if (!string.IsNullOrEmpty(value))
+                    if (string.IsNullOrEmpty(value))
                     {
-                        try
-                        {
-                            details.CleanGlobalObjectId = Convert.ToHexString(Convert.FromBase64String(value));
-                        }
-                        catch (FormatException)
-                        {
-                            details.CleanGlobalObjectId = value;
-                        }
-                        break;
+                        continue;
                     }
+
+                    // CleanGlobalObjectId (binary -> hex).
+                    try
+                    {
+                        details.CleanGlobalObjectId = Convert.ToHexString(Convert.FromBase64String(value));
+                    }
+                    catch (FormatException)
+                    {
+                        details.CleanGlobalObjectId = value;
+                    }
+                    break;
                 }
             }
 
+            // For a recurring series, read the whole-series occurrence/exception/deletion
+            // counts directly from the master's PidLidAppointmentRecur blob. This is a
+            // single targeted request (not a per-instance search).
+            if (details.Recurrence is not null)
+            {
+                await PopulateSeriesCountsAsync(basePath, details, cancellationToken);
+            }
+
             return details;
+        }
+
+        /// <summary>
+        /// Fetches the PidLidAppointmentRecur (PSETID_Appointment id 0x8216) binary blob
+        /// for a series master and parses the whole-series counts from it. Uses its own
+        /// single-property request so the extended-property expansion is reliable.
+        /// </summary>
+        private async Task PopulateSeriesCountsAsync(
+            string basePath, EventDetails details, CancellationToken cancellationToken)
+        {
+            const string apptRecurProp = "Binary {00062002-0000-0000-C000-000000000046} Id 0x8216";
+            string filter = $"id eq '{apptRecurProp}'";
+            string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
+            string url = $"{basePath}?$select=id&$expand={expand}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            JsonElement root = doc.RootElement;
+
+            if (!root.TryGetProperty("singleValueExtendedProperties", out var svep) ||
+                svep.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (var prop in svep.EnumerateArray())
+            {
+                string value = GetString(prop, "value");
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    byte[] blob = Convert.FromBase64String(value);
+                    if (AppointmentRecurParser.TryParse(blob, out SeriesCounts counts))
+                    {
+                        details.TotalInstances = counts.Instances;
+                        details.TotalExceptions = counts.Exceptions;
+                        details.TotalDeletions = counts.Deletions;
+                        details.TotalScopeNote = counts.Endless
+                            ? "entire series (no end date)"
+                            : "entire series";
+                        details.HasSeriesCounts = true;
+                    }
+
+                    if (AppointmentRecurParser.TryParseDetails(blob, out List<RecurChange> blobChanges))
+                    {
+                        details.SeriesChanges.Clear();
+                        details.SeriesChanges.AddRange(blobChanges);
+                    }
+                }
+                catch (FormatException)
+                {
+                    // Leave counts unset if the blob can't be decoded.
+                }
+                break;
+            }
         }
 
         private static string GetDateTimeText(JsonElement element, string name)
@@ -439,7 +534,15 @@ namespace CalendarExpansionVisualizer
                 dt.ValueKind == JsonValueKind.String &&
                 DateTime.TryParse(dt.GetString(), out DateTime parsed))
             {
-                return new DateTimeOffset(DateTime.SpecifyKind(parsed, DateTimeKind.Utc));
+                // Graph returns the dateTime as wall-clock in the requested time zone
+                // (see the Prefer header on calendarView). Treat an offset-less value as
+                // local wall-clock so the calendar date matches the recurrence pattern.
+                if (parsed.Kind == DateTimeKind.Unspecified)
+                {
+                    parsed = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+                }
+
+                return new DateTimeOffset(parsed);
             }
 
             return null;

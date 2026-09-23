@@ -55,3 +55,51 @@ add a checkbox for enabling logging - default is false, checked will log and unc
 
 ------------------------------------------------------------------------
 
+[2026-09-22 19:40] Prompt 10:
+the default for logging needs to be unchecked.  Change the controls for the date selection to be drop down calendar controls
+
+------------------------------------------------------------------------
+
+[2026-09-22 19:48] Prompt 11:
+When the environmentinformationform is shown, it is showing instances, exceptions and deletions only for the time period. I also need need it to show instances, exceptions and deletions  for the entire calendar item even if it its outside of the selected date range.
+
+------------------------------------------------------------------------
+
+[2026-09-22 19:57] Prompt 12:
+when getti instances, exceptions and deletions  for the entire calendar item, try to get those counts from the propeties on the calendar master record - don't do continous seraches do get a count.
+
+------------------------------------------------------------------------
+
+[2026-09-22 20:13] Prompt 13:
+The entire series total modification and deletion counts are wrong.
+
+------------------------------------------------------------------------
+
+[2026-09-22 21:01] Prompt 14:
+when getting counts for  instances, exceptions and deletions  for the entire calendar item, read the  pidlidappointmentrecur property from the CALENDAR MASTER record and parse it and extract the ExceptionCount field and the DeletedInstanceCount field.
+
+------------------------------------------------------------------------
+
+[2026-09-22 21:08] Prompt 15:
+the end date range's time needs to be the very last end of the day selected
+
+------------------------------------------------------------------------
+
+[2026-09-22 21:10] Prompt 16:
+The last day showing in the grid shows  a red cell which means its deleted and its not. Recheck the logic and fix it.
+
+------------------------------------------------------------------------
+
+[2026-09-22 23:39] Prompt 17:
+When "List Exceptions" is selected and "List" is clicked, list all the exception information on all exceptions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.
+When "List Deletions" is selected and "List" is clicked, list all the Deletions information on all Deletions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.
+When "List  Exceptions and Deletions is selected and "List" is clicked, list all the Exceptions and Deletions information on all Deletions for the entire calendar item and that includes ones which are outside of search range, - all are needed.  Show their date range first then the details.  Show in order of the newest to the oldest.  Below the date range, display "Deletion" or "Exception" depending upon the data.  Show in order of the newest to the oldest.
+Ask me questions if anything is unclear.
+
+------------------------------------------------------------------------
+
+[2026-09-22 23:53] Prompt 18:
+I need EventInformationForm to be a form which has all the controls on the form in a way it can be modified in the form designer.
+
+------------------------------------------------------------------------
+

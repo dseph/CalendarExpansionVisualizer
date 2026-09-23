@@ -44,15 +44,20 @@
             txtLogPath = new TextBox();
             btnBrowseLog = new Button();
             chkEnableLog = new CheckBox();
+            lblListMode = new Label();
+            rbListExceptions = new RadioButton();
+            rbListDeletions = new RadioButton();
+            rbListBoth = new RadioButton();
+            btnList = new Button();
             dgvEvents = new DataGridView();
             lblStatus = new Label();
             grpAuth.SuspendLayout();
             grpQuery.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvEvents).BeginInit();
             SuspendLayout();
-            //
+            // 
             // grpAuth
-            //
+            // 
             grpAuth.Controls.Add(rbDelegated);
             grpAuth.Controls.Add(rbApplication);
             grpAuth.Controls.Add(rbMicrosoftApp);
@@ -68,147 +73,170 @@
             grpAuth.Controls.Add(txtUpn);
             grpAuth.Controls.Add(btnGetToken);
             grpAuth.Controls.Add(lblTokenStatus);
-            grpAuth.Location = new Point(12, 12);
+            grpAuth.Location = new Point(15, 15);
+            grpAuth.Margin = new Padding(4, 4, 4, 4);
             grpAuth.Name = "grpAuth";
-            grpAuth.Size = new Size(860, 210);
+            grpAuth.Padding = new Padding(4, 4, 4, 4);
+            grpAuth.Size = new Size(1075, 262);
             grpAuth.TabIndex = 0;
             grpAuth.TabStop = false;
             grpAuth.Text = "Authentication";
-            //
+            // 
             // rbDelegated
-            //
+            // 
             rbDelegated.AutoSize = true;
             rbDelegated.Checked = true;
-            rbDelegated.Location = new Point(15, 25);
+            rbDelegated.Location = new Point(19, 31);
+            rbDelegated.Margin = new Padding(4, 4, 4, 4);
             rbDelegated.Name = "rbDelegated";
-            rbDelegated.Size = new Size(157, 24);
+            rbDelegated.Size = new Size(166, 29);
             rbDelegated.TabIndex = 0;
             rbDelegated.TabStop = true;
             rbDelegated.Text = "Delegated (user)";
             rbDelegated.UseVisualStyleBackColor = true;
             rbDelegated.CheckedChanged += AuthFlowChanged;
-            //
+            // 
             // rbApplication
-            //
+            // 
             rbApplication.AutoSize = true;
-            rbApplication.Location = new Point(190, 25);
+            rbApplication.Location = new Point(238, 31);
+            rbApplication.Margin = new Padding(4, 4, 4, 4);
             rbApplication.Name = "rbApplication";
-            rbApplication.Size = new Size(210, 24);
+            rbApplication.Size = new Size(214, 29);
             rbApplication.TabIndex = 1;
             rbApplication.Text = "Application (app-only)";
             rbApplication.UseVisualStyleBackColor = true;
             rbApplication.CheckedChanged += AuthFlowChanged;
-            //
+            // 
             // rbMicrosoftApp
-            //
+            // 
             rbMicrosoftApp.AutoSize = true;
-            rbMicrosoftApp.Location = new Point(400, 25);
+            rbMicrosoftApp.Location = new Point(500, 31);
+            rbMicrosoftApp.Margin = new Padding(4, 4, 4, 4);
             rbMicrosoftApp.Name = "rbMicrosoftApp";
-            rbMicrosoftApp.Size = new Size(260, 24);
+            rbMicrosoftApp.Size = new Size(269, 29);
             rbMicrosoftApp.TabIndex = 2;
             rbMicrosoftApp.Text = "Microsoft App ID (delegated)";
             rbMicrosoftApp.UseVisualStyleBackColor = true;
             rbMicrosoftApp.CheckedChanged += AuthFlowChanged;
-            //
+            // 
             // lblTenantId
-            //
+            // 
             lblTenantId.AutoSize = true;
-            lblTenantId.Location = new Point(15, 60);
+            lblTenantId.Location = new Point(19, 75);
+            lblTenantId.Margin = new Padding(4, 0, 4, 0);
             lblTenantId.Name = "lblTenantId";
-            lblTenantId.Size = new Size(75, 20);
+            lblTenantId.Size = new Size(86, 25);
+            lblTenantId.TabIndex = 3;
             lblTenantId.Text = "Tenant ID";
-            //
+            // 
             // txtTenantId
-            //
-            txtTenantId.Location = new Point(130, 57);
+            // 
+            txtTenantId.Location = new Point(162, 71);
+            txtTenantId.Margin = new Padding(4, 4, 4, 4);
             txtTenantId.Name = "txtTenantId";
-            txtTenantId.Size = new Size(300, 27);
+            txtTenantId.Size = new Size(374, 31);
             txtTenantId.TabIndex = 2;
-            //
+            // 
             // lblClientId
-            //
+            // 
             lblClientId.AutoSize = true;
-            lblClientId.Location = new Point(15, 93);
+            lblClientId.Location = new Point(19, 116);
+            lblClientId.Margin = new Padding(4, 0, 4, 0);
             lblClientId.Name = "lblClientId";
-            lblClientId.Size = new Size(66, 20);
+            lblClientId.Size = new Size(79, 25);
+            lblClientId.TabIndex = 4;
             lblClientId.Text = "Client ID";
-            //
+            // 
             // txtClientId
-            //
-            txtClientId.Location = new Point(130, 90);
+            // 
+            txtClientId.Location = new Point(162, 112);
+            txtClientId.Margin = new Padding(4, 4, 4, 4);
             txtClientId.Name = "txtClientId";
-            txtClientId.Size = new Size(300, 27);
+            txtClientId.Size = new Size(374, 31);
             txtClientId.TabIndex = 3;
-            //
+            // 
             // lblClientSecret
-            //
+            // 
             lblClientSecret.AutoSize = true;
-            lblClientSecret.Location = new Point(15, 126);
+            lblClientSecret.Location = new Point(19, 158);
+            lblClientSecret.Margin = new Padding(4, 0, 4, 0);
             lblClientSecret.Name = "lblClientSecret";
-            lblClientSecret.Size = new Size(95, 20);
+            lblClientSecret.Size = new Size(109, 25);
+            lblClientSecret.TabIndex = 5;
             lblClientSecret.Text = "Client Secret";
-            //
+            // 
             // txtClientSecret
-            //
-            txtClientSecret.Location = new Point(130, 123);
+            // 
+            txtClientSecret.Location = new Point(162, 154);
+            txtClientSecret.Margin = new Padding(4, 4, 4, 4);
             txtClientSecret.Name = "txtClientSecret";
-            txtClientSecret.UseSystemPasswordChar = true;
-            txtClientSecret.Size = new Size(300, 27);
+            txtClientSecret.Size = new Size(374, 31);
             txtClientSecret.TabIndex = 4;
-            //
+            txtClientSecret.UseSystemPasswordChar = true;
+            // 
             // lblRedirectUri
-            //
+            // 
             lblRedirectUri.AutoSize = true;
-            lblRedirectUri.Location = new Point(460, 60);
+            lblRedirectUri.Location = new Point(575, 75);
+            lblRedirectUri.Margin = new Padding(4, 0, 4, 0);
             lblRedirectUri.Name = "lblRedirectUri";
-            lblRedirectUri.Size = new Size(90, 20);
+            lblRedirectUri.Size = new Size(108, 25);
+            lblRedirectUri.TabIndex = 6;
             lblRedirectUri.Text = "Redirect URI";
-            //
+            // 
             // txtRedirectUri
-            //
-            txtRedirectUri.Location = new Point(560, 57);
+            // 
+            txtRedirectUri.Location = new Point(700, 71);
+            txtRedirectUri.Margin = new Padding(4, 4, 4, 4);
             txtRedirectUri.Name = "txtRedirectUri";
-            txtRedirectUri.Text = "http://localhost";
-            txtRedirectUri.Size = new Size(280, 27);
+            txtRedirectUri.Size = new Size(349, 31);
             txtRedirectUri.TabIndex = 5;
-            //
+            txtRedirectUri.Text = "http://localhost";
+            // 
             // lblUpn
-            //
+            // 
             lblUpn.AutoSize = true;
-            lblUpn.Location = new Point(460, 93);
+            lblUpn.Location = new Point(575, 116);
+            lblUpn.Margin = new Padding(4, 0, 4, 0);
             lblUpn.Name = "lblUpn";
-            lblUpn.Size = new Size(100, 20);
+            lblUpn.Size = new Size(115, 25);
+            lblUpn.TabIndex = 7;
             lblUpn.Text = "Mailbox UPN";
-            //
+            // 
             // txtUpn
-            //
-            txtUpn.Location = new Point(560, 90);
-            txtUpn.Name = "txtUpn";
+            // 
             txtUpn.Enabled = false;
-            txtUpn.Size = new Size(280, 27);
+            txtUpn.Location = new Point(700, 112);
+            txtUpn.Margin = new Padding(4, 4, 4, 4);
+            txtUpn.Name = "txtUpn";
+            txtUpn.Size = new Size(349, 31);
             txtUpn.TabIndex = 6;
-            //
+            // 
             // btnGetToken
-            //
-            btnGetToken.Location = new Point(130, 160);
+            // 
+            btnGetToken.Location = new Point(162, 200);
+            btnGetToken.Margin = new Padding(4, 4, 4, 4);
             btnGetToken.Name = "btnGetToken";
-            btnGetToken.Size = new Size(140, 35);
+            btnGetToken.Size = new Size(175, 44);
             btnGetToken.TabIndex = 7;
             btnGetToken.Text = "Get Token";
             btnGetToken.UseVisualStyleBackColor = true;
             btnGetToken.Click += btnGetToken_Click;
-            //
+            // 
             // lblTokenStatus
-            //
+            // 
             lblTokenStatus.AutoSize = true;
             lblTokenStatus.ForeColor = Color.DimGray;
-            lblTokenStatus.Location = new Point(290, 168);
+            lblTokenStatus.Location = new Point(362, 210);
+            lblTokenStatus.Margin = new Padding(4, 0, 4, 0);
             lblTokenStatus.Name = "lblTokenStatus";
-            lblTokenStatus.Size = new Size(120, 20);
+            lblTokenStatus.Size = new Size(159, 25);
+            lblTokenStatus.TabIndex = 8;
             lblTokenStatus.Text = "No token acquired";
-            //
+            // 
             // grpQuery
-            //
+            // 
             grpQuery.Controls.Add(lblStart);
             grpQuery.Controls.Add(dtpStart);
             grpQuery.Controls.Add(lblEnd);
@@ -219,141 +247,217 @@
             grpQuery.Controls.Add(txtLogPath);
             grpQuery.Controls.Add(btnBrowseLog);
             grpQuery.Controls.Add(chkEnableLog);
-            grpQuery.Location = new Point(12, 228);
+            grpQuery.Controls.Add(lblListMode);
+            grpQuery.Controls.Add(rbListExceptions);
+            grpQuery.Controls.Add(rbListDeletions);
+            grpQuery.Controls.Add(rbListBoth);
+            grpQuery.Controls.Add(btnList);
+            grpQuery.Location = new Point(15, 285);
+            grpQuery.Margin = new Padding(4, 4, 4, 4);
             grpQuery.Name = "grpQuery";
-            grpQuery.Size = new Size(860, 150);
+            grpQuery.Padding = new Padding(4, 4, 4, 4);
+            grpQuery.Size = new Size(1215, 181);
             grpQuery.TabIndex = 1;
             grpQuery.TabStop = false;
             grpQuery.Text = "Calendar Query";
-            //
+            // 
             // lblStart
-            //
+            // 
             lblStart.AutoSize = true;
-            lblStart.Location = new Point(15, 33);
+            lblStart.Location = new Point(19, 41);
+            lblStart.Margin = new Padding(4, 0, 4, 0);
             lblStart.Name = "lblStart";
-            lblStart.Size = new Size(75, 20);
+            lblStart.Size = new Size(90, 25);
+            lblStart.TabIndex = 0;
             lblStart.Text = "Start Date";
-            //
+            // 
             // dtpStart
-            //
-            dtpStart.Format = DateTimePickerFormat.Custom;
-            dtpStart.CustomFormat = "yyyy-MM-dd HH:mm";
-            dtpStart.ShowUpDown = true;
-            dtpStart.Location = new Point(95, 30);
+            // 
+            dtpStart.Format = DateTimePickerFormat.Short;
+            dtpStart.Location = new Point(119, 38);
+            dtpStart.Margin = new Padding(4, 4, 4, 4);
             dtpStart.Name = "dtpStart";
-            dtpStart.Size = new Size(180, 27);
+            dtpStart.Size = new Size(224, 31);
             dtpStart.TabIndex = 0;
             dtpStart.ValueChanged += StartDateChanged;
-            //
+            // 
             // lblEnd
-            //
+            // 
             lblEnd.AutoSize = true;
-            lblEnd.Location = new Point(295, 33);
+            lblEnd.Location = new Point(369, 41);
+            lblEnd.Margin = new Padding(4, 0, 4, 0);
             lblEnd.Name = "lblEnd";
-            lblEnd.Size = new Size(70, 20);
+            lblEnd.Size = new Size(84, 25);
+            lblEnd.TabIndex = 1;
             lblEnd.Text = "End Date";
-            //
+            // 
             // dtpEnd
-            //
-            dtpEnd.Format = DateTimePickerFormat.Custom;
-            dtpEnd.CustomFormat = "yyyy-MM-dd HH:mm";
-            dtpEnd.ShowUpDown = true;
-            dtpEnd.Location = new Point(370, 30);
+            // 
+            dtpEnd.Format = DateTimePickerFormat.Short;
+            dtpEnd.Location = new Point(462, 38);
+            dtpEnd.Margin = new Padding(4, 4, 4, 4);
             dtpEnd.Name = "dtpEnd";
-            dtpEnd.Size = new Size(180, 27);
+            dtpEnd.Size = new Size(224, 31);
             dtpEnd.TabIndex = 1;
-            //
+            // 
             // btnFetch
-            //
-            btnFetch.Location = new Point(580, 25);
+            // 
+            btnFetch.Enabled = false;
+            btnFetch.Location = new Point(725, 31);
+            btnFetch.Margin = new Padding(4, 4, 4, 4);
             btnFetch.Name = "btnFetch";
-            btnFetch.Size = new Size(120, 35);
+            btnFetch.Size = new Size(150, 44);
             btnFetch.TabIndex = 2;
             btnFetch.Text = "Fetch List";
-            btnFetch.Enabled = false;
             btnFetch.UseVisualStyleBackColor = true;
             btnFetch.Click += btnFetch_Click;
-            //
+            // 
             // btnCheck
-            //
-            btnCheck.Location = new Point(710, 25);
+            // 
+            btnCheck.Enabled = false;
+            btnCheck.Location = new Point(888, 31);
+            btnCheck.Margin = new Padding(4, 4, 4, 4);
             btnCheck.Name = "btnCheck";
-            btnCheck.Size = new Size(130, 35);
+            btnCheck.Size = new Size(162, 44);
             btnCheck.TabIndex = 3;
             btnCheck.Text = "Check";
-            btnCheck.Enabled = false;
             btnCheck.UseVisualStyleBackColor = true;
             btnCheck.Click += btnCheck_Click;
-            //
+            // 
             // lblLogPath
-            //
+            // 
             lblLogPath.AutoSize = true;
-            lblLogPath.Location = new Point(15, 83);
+            lblLogPath.Location = new Point(19, 92);
+            lblLogPath.Margin = new Padding(4, 0, 4, 0);
             lblLogPath.Name = "lblLogPath";
-            lblLogPath.Size = new Size(60, 20);
+            lblLogPath.Size = new Size(73, 25);
+            lblLogPath.TabIndex = 4;
             lblLogPath.Text = "Log File";
-            //
+            // 
             // txtLogPath
-            //
-            txtLogPath.Location = new Point(95, 80);
+            // 
+            txtLogPath.Location = new Point(119, 88);
+            txtLogPath.Margin = new Padding(4, 4, 4, 4);
             txtLogPath.Name = "txtLogPath";
-            txtLogPath.Size = new Size(605, 27);
+            txtLogPath.Size = new Size(755, 31);
             txtLogPath.TabIndex = 4;
-            //
+            // 
             // btnBrowseLog
-            //
-            btnBrowseLog.Location = new Point(710, 78);
+            // 
+            btnBrowseLog.Location = new Point(888, 83);
+            btnBrowseLog.Margin = new Padding(4, 4, 4, 4);
             btnBrowseLog.Name = "btnBrowseLog";
-            btnBrowseLog.Size = new Size(130, 32);
+            btnBrowseLog.Size = new Size(162, 40);
             btnBrowseLog.TabIndex = 5;
             btnBrowseLog.Text = "Browse...";
             btnBrowseLog.UseVisualStyleBackColor = true;
             btnBrowseLog.Click += btnBrowseLog_Click;
-            //
+            // 
             // chkEnableLog
-            //
+            // 
             chkEnableLog.AutoSize = true;
-            chkEnableLog.Checked = false;
-            chkEnableLog.Location = new Point(95, 112);
+            chkEnableLog.Location = new Point(1058, 92);
+            chkEnableLog.Margin = new Padding(4, 4, 4, 4);
             chkEnableLog.Name = "chkEnableLog";
-            chkEnableLog.Size = new Size(130, 24);
+            chkEnableLog.Size = new Size(157, 29);
             chkEnableLog.TabIndex = 6;
             chkEnableLog.Text = "Enable logging";
             chkEnableLog.UseVisualStyleBackColor = true;
-            //
+            // 
+            // lblListMode
+            // 
+            lblListMode.AutoSize = true;
+            lblListMode.Location = new Point(19, 139);
+            lblListMode.Margin = new Padding(4, 0, 4, 0);
+            lblListMode.Name = "lblListMode";
+            lblListMode.Size = new Size(153, 25);
+            lblListMode.TabIndex = 7;
+            lblListMode.Text = "List (whole series):";
+            // 
+            // rbListExceptions
+            // 
+            rbListExceptions.AutoSize = true;
+            rbListExceptions.Checked = true;
+            rbListExceptions.Location = new Point(188, 137);
+            rbListExceptions.Margin = new Padding(4, 4, 4, 4);
+            rbListExceptions.Name = "rbListExceptions";
+            rbListExceptions.Size = new Size(121, 29);
+            rbListExceptions.TabIndex = 7;
+            rbListExceptions.TabStop = true;
+            rbListExceptions.Text = "Exceptions";
+            rbListExceptions.UseVisualStyleBackColor = true;
+            // 
+            // rbListDeletions
+            // 
+            rbListDeletions.AutoSize = true;
+            rbListDeletions.Location = new Point(338, 137);
+            rbListDeletions.Margin = new Padding(4, 4, 4, 4);
+            rbListDeletions.Name = "rbListDeletions";
+            rbListDeletions.Size = new Size(111, 29);
+            rbListDeletions.TabIndex = 8;
+            rbListDeletions.Text = "Deletions";
+            rbListDeletions.UseVisualStyleBackColor = true;
+            // 
+            // rbListBoth
+            // 
+            rbListBoth.AutoSize = true;
+            rbListBoth.Location = new Point(475, 137);
+            rbListBoth.Margin = new Padding(4, 4, 4, 4);
+            rbListBoth.Name = "rbListBoth";
+            rbListBoth.Size = new Size(235, 29);
+            rbListBoth.TabIndex = 9;
+            rbListBoth.Text = "Exceptions and Deletions";
+            rbListBoth.UseVisualStyleBackColor = true;
+            // 
+            // btnList
+            // 
+            btnList.Enabled = false;
+            btnList.Location = new Point(888, 131);
+            btnList.Margin = new Padding(4, 4, 4, 4);
+            btnList.Name = "btnList";
+            btnList.Size = new Size(162, 40);
+            btnList.TabIndex = 10;
+            btnList.Text = "List";
+            btnList.UseVisualStyleBackColor = true;
+            btnList.Click += btnList_Click;
+            // 
             // dgvEvents
-            //
-            dgvEvents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            // 
             dgvEvents.AllowUserToAddRows = false;
-            dgvEvents.ReadOnly = true;
-            dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvEvents.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            dgvEvents.Location = new Point(12, 384);
+            dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvEvents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvEvents.Location = new Point(15, 474);
+            dgvEvents.Margin = new Padding(4, 4, 4, 4);
             dgvEvents.Name = "dgvEvents";
+            dgvEvents.ReadOnly = true;
             dgvEvents.RowHeadersWidth = 51;
-            dgvEvents.Size = new Size(860, 290);
+            dgvEvents.Size = new Size(1213, 407);
             dgvEvents.TabIndex = 2;
-            //
+            // 
             // lblStatus
-            //
-            lblStatus.AutoSize = true;
+            // 
             lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            lblStatus.Location = new Point(12, 662);
+            lblStatus.AutoSize = true;
+            lblStatus.Location = new Point(15, 885);
+            lblStatus.Margin = new Padding(4, 0, 4, 0);
             lblStatus.Name = "lblStatus";
-            lblStatus.Size = new Size(50, 20);
+            lblStatus.Size = new Size(60, 25);
+            lblStatus.TabIndex = 3;
             lblStatus.Text = "Ready";
-            //
-            // Form1
-            //
-            AutoScaleDimensions = new SizeF(8F, 20F);
+            // 
+            // frmMain
+            // 
+            AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(884, 691);
+            ClientSize = new Size(1243, 921);
             Controls.Add(grpAuth);
             Controls.Add(grpQuery);
             Controls.Add(dgvEvents);
             Controls.Add(lblStatus);
-            MinimumSize = new Size(902, 738);
-            Name = "Form1";
+            Margin = new Padding(4, 4, 4, 4);
+            MinimumSize = new Size(1122, 966);
+            Name = "frmMain";
             Text = "Calendar Expansion Visualizer";
             grpAuth.ResumeLayout(false);
             grpAuth.PerformLayout();
@@ -393,6 +497,11 @@
         private TextBox txtLogPath;
         private Button btnBrowseLog;
         private CheckBox chkEnableLog;
+        private Label lblListMode;
+        private RadioButton rbListExceptions;
+        private RadioButton rbListDeletions;
+        private RadioButton rbListBoth;
+        private Button btnList;
         private DataGridView dgvEvents;
         private Label lblStatus;
     }
