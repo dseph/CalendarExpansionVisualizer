@@ -33,7 +33,31 @@ namespace CalendarExpansionVisualizer
         public DateTime End { get; set; }
         public string? Subject { get; set; }
         public string? Location { get; set; }
+
+        // Attachment differences between this exception occurrence and the series master
+        // (added or removed files). Only populated for exceptions and only when the
+        // occurrence's attachment list could be retrieved from Graph.
+        public bool AttachmentInfoKnown { get; set; }
+        public List<AttachmentChange> AttachmentChanges { get; } = new();
     }
+
+    /// <summary>Whether an attachment was added to or removed from an exception occurrence.</summary>
+    internal enum AttachmentChangeKind
+    {
+        Added,
+        Removed
+    }
+
+    /// <summary>A single added or removed attachment on an exception occurrence.</summary>
+    internal sealed class AttachmentChange
+    {
+        public AttachmentChangeKind Kind { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public long? Size { get; set; }
+    }
+
+    /// <summary>A file attachment identified by name and size, used to diff occurrences.</summary>
+    internal readonly record struct AttachmentInfo(string Name, long? Size);
 
     /// <summary>
     /// Parses a PidLidAppointmentRecur binary blob (MS-OXOCAL 2.2.1.44) to obtain the

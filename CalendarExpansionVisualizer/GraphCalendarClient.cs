@@ -45,6 +45,9 @@ namespace CalendarExpansionVisualizer
         // Attachment summary for the calendar record.
         public int? AttachmentCount { get; set; }
         public long? AttachmentsTotalSize { get; set; }
+
+        // The series master's own attachments, used to diff against exception occurrences.
+        public List<AttachmentInfo> MasterAttachments { get; } = new();
     }
 
 
@@ -322,10 +325,11 @@ namespace CalendarExpansionVisualizer
                 foreach (var att in atts.EnumerateArray())
                 {
                     count++;
-                    if (att.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long attSize))
-                    {
-                        totalSize += attSize;
-                    }
+                    long? attSize = att.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long s)
+                        ? s
+                        : null;
+                    totalSize += attSize ?? 0;
+                    details.MasterAttachments.Add(new AttachmentInfo(GetString(att, "name"), attSize));
                 }
                 details.AttachmentCount = count;
                 details.AttachmentsTotalSize = totalSize;
@@ -361,6 +365,7 @@ namespace CalendarExpansionVisualizer
             if (details.Recurrence is not null)
             {
                 await PopulateSeriesCountsAsync(basePath, details, cancellationToken);
+                await PopulateExceptionAttachmentChangesAsync(basePath, details, cancellationToken);
             }
 
             // Size of the calendar record itself (PidTagMessageSize). Single targeted request.
@@ -476,6 +481,168 @@ namespace CalendarExpansionVisualizer
                 break;
             }
         }
+
+        /// <summary>
+        /// For each exception occurrence of the series, retrieves its attachments from
+        /// Graph and diffs them against the series master's attachments so added/removed
+        /// files (name and size) can be listed. Uses the series master's /instances
+        /// expansion over the span covered by the parsed exceptions (a single bounded
+        /// query with paging) rather than one request per exception.
+        /// </summary>
+        private async Task PopulateExceptionAttachmentChangesAsync(
+            string basePath, EventDetails details, CancellationToken cancellationToken)
+        {
+            var exceptions = details.SeriesChanges
+                .Where(c => c.Kind == RecurChangeKind.Exception)
+                .ToList();
+            if (exceptions.Count == 0)
+            {
+                return;
+            }
+
+            // Bound the instances window to the span covered by the parsed exceptions,
+            // padded by a day so occurrences at the edges are included.
+            DateTime min = exceptions.Min(c => c.Start < c.OriginalStart ? c.Start : c.OriginalStart);
+            DateTime max = exceptions.Max(c => c.End > c.OriginalEnd ? c.End : c.OriginalEnd);
+            string startText = min.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
+            string endText = max.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ss");
+
+            var masterSet = new HashSet<string>(
+                details.MasterAttachments.Select(AttachmentKey), StringComparer.OrdinalIgnoreCase);
+
+            string? url =
+                $"{basePath}/instances?startDateTime={Uri.EscapeDataString(startText)}" +
+                $"&endDateTime={Uri.EscapeDataString(endText)}" +
+                "&$select=id,type,start,end&$expand=attachments($select=name,size)&$top=100";
+
+            // Graph occurrences returned for the window, keyed to the closest exception.
+            var occurrences = new List<(DateTimeOffset Start, List<AttachmentInfo> Attachments)>();
+            int pageGuard = 0;
+
+            try
+            {
+                while (!string.IsNullOrEmpty(url) && pageGuard++ < 100)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Add("Prefer", $"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"");
+
+                    using var response = await _http.SendAsync(request, cancellationToken);
+                    string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return;
+                    }
+
+                    using var doc = JsonDocument.Parse(content);
+                    JsonElement root = doc.RootElement;
+
+                    if (root.TryGetProperty("value", out var value) &&
+                        value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in value.EnumerateArray())
+                        {
+                            if (!string.Equals(GetString(item, "type"), "exception",
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            DateTimeOffset? occStart = GetDateTime(item, "start");
+                            if (occStart is null)
+                            {
+                                continue;
+                            }
+
+                            var atts = new List<AttachmentInfo>();
+                            if (item.TryGetProperty("attachments", out var arr) &&
+                                arr.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var att in arr.EnumerateArray())
+                                {
+                                    long? attSize = att.TryGetProperty("size", out var sz) &&
+                                                    sz.TryGetInt64(out long s) ? s : null;
+                                    atts.Add(new AttachmentInfo(GetString(att, "name"), attSize));
+                                }
+                            }
+
+                            occurrences.Add((occStart.Value, atts));
+                        }
+                    }
+
+                    url = root.TryGetProperty("@odata.nextLink", out var next)
+                        ? next.GetString()
+                        : null;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                return;
+            }
+
+            // Match each Graph exception occurrence to the closest parsed exception by
+            // start time (both are local wall-clock), then diff attachments.
+            var used = new bool[occurrences.Count];
+            foreach (RecurChange change in exceptions)
+            {
+                int best = -1;
+                double bestDiff = double.MaxValue;
+                for (int i = 0; i < occurrences.Count; i++)
+                {
+                    if (used[i])
+                    {
+                        continue;
+                    }
+                    double diff = Math.Abs((occurrences[i].Start.DateTime - change.Start).TotalMinutes);
+                    if (diff < bestDiff)
+                    {
+                        bestDiff = diff;
+                        best = i;
+                    }
+                }
+
+                // Only accept a match within two days to avoid mispairing occurrences.
+                if (best < 0 || bestDiff > 2 * 24 * 60)
+                {
+                    continue;
+                }
+
+                used[best] = true;
+                change.AttachmentInfoKnown = true;
+
+                var occAttachments = occurrences[best].Attachments;
+                var occKeys = new HashSet<string>(
+                    occAttachments.Select(AttachmentKey), StringComparer.OrdinalIgnoreCase);
+
+                foreach (AttachmentInfo a in occAttachments)
+                {
+                    if (!masterSet.Contains(AttachmentKey(a)))
+                    {
+                        change.AttachmentChanges.Add(new AttachmentChange
+                        {
+                            Kind = AttachmentChangeKind.Added,
+                            Name = a.Name,
+                            Size = a.Size
+                        });
+                    }
+                }
+
+                foreach (AttachmentInfo a in details.MasterAttachments)
+                {
+                    if (!occKeys.Contains(AttachmentKey(a)))
+                    {
+                        change.AttachmentChanges.Add(new AttachmentChange
+                        {
+                            Kind = AttachmentChangeKind.Removed,
+                            Name = a.Name,
+                            Size = a.Size
+                        });
+                    }
+                }
+            }
+        }
+
+        private static string AttachmentKey(AttachmentInfo a) => $"{a.Name}|{a.Size}";
 
         private static string GetDateTimeText(JsonElement element, string name)
         {
