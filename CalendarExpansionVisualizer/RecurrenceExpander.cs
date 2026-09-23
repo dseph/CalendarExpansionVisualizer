@@ -30,6 +30,8 @@ namespace CalendarExpansionVisualizer
         public string Subject { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public RecurrenceInfo? Recurrence { get; set; }
+        public long? MessageSize { get; set; }
+        public int? ExceptionCount { get; set; }
     }
 
     /// <summary>

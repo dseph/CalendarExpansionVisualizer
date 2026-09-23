@@ -53,6 +53,7 @@
             btnList = new Button();
             dgvEvents = new DataGridView();
             lblStatus = new Label();
+            label1 = new Label();
             grpAuth.SuspendLayout();
             grpQuery.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvEvents).BeginInit();
@@ -60,6 +61,7 @@
             // 
             // grpAuth
             // 
+            grpAuth.Controls.Add(label1);
             grpAuth.Controls.Add(rbDelegated);
             grpAuth.Controls.Add(rbApplication);
             grpAuth.Controls.Add(rbMicrosoftApp);
@@ -81,7 +83,7 @@
             grpAuth.Margin = new Padding(4);
             grpAuth.Name = "grpAuth";
             grpAuth.Padding = new Padding(4);
-            grpAuth.Size = new Size(1075, 262);
+            grpAuth.Size = new Size(1213, 262);
             grpAuth.TabIndex = 0;
             grpAuth.TabStop = false;
             grpAuth.Text = "Authentication";
@@ -242,7 +244,7 @@
             // lblCloud
             // 
             lblCloud.AutoSize = true;
-            lblCloud.Location = new Point(790, 37);
+            lblCloud.Location = new Point(799, 31);
             lblCloud.Margin = new Padding(4, 0, 4, 0);
             lblCloud.Name = "lblCloud";
             lblCloud.Size = new Size(59, 25);
@@ -254,7 +256,7 @@
             cboCloud.DropDownStyle = ComboBoxStyle.DropDownList;
             cboCloud.FormattingEnabled = true;
             cboCloud.Items.AddRange(new object[] { "Commercial", "GCC", "GCC High", "DoD" });
-            cboCloud.Location = new Point(860, 33);
+            cboCloud.Location = new Point(869, 27);
             cboCloud.Margin = new Padding(4);
             cboCloud.Name = "cboCloud";
             cboCloud.Size = new Size(195, 33);
@@ -471,6 +473,16 @@
             lblStatus.TabIndex = 3;
             lblStatus.Text = "Ready";
             // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Location = new Point(571, 160);
+            label1.Margin = new Padding(4, 0, 4, 0);
+            label1.Name = "label1";
+            label1.Size = new Size(417, 25);
+            label1.TabIndex = 11;
+            label1.Text = "Note: Calendars.Read Graph is permission required.";
+            // 
             // frmMain
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
@@ -532,5 +544,6 @@
         private Button btnList;
         private DataGridView dgvEvents;
         private Label lblStatus;
+        private Label label1;
     }
 }
