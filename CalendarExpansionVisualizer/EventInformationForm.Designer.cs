@@ -43,7 +43,7 @@ namespace CalendarExpansionVisualizer
             txtBody.Dock = DockStyle.Fill;
             txtBody.Font = new Font("Consolas", 9.5F);
             txtBody.Location = new Point(0, 50);
-            txtBody.Margin = new Padding(4, 4, 4, 4);
+            txtBody.Margin = new Padding(4);
             txtBody.Multiline = true;
             txtBody.Name = "txtBody";
             txtBody.ReadOnly = true;
@@ -59,7 +59,7 @@ namespace CalendarExpansionVisualizer
             txtWarn.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
             txtWarn.ForeColor = Color.Red;
             txtWarn.Location = new Point(0, 664);
-            txtWarn.Margin = new Padding(4, 4, 4, 4);
+            txtWarn.Margin = new Padding(4);
             txtWarn.Multiline = true;
             txtWarn.Name = "txtWarn";
             txtWarn.ReadOnly = true;
@@ -74,17 +74,18 @@ namespace CalendarExpansionVisualizer
             pnlButtons.Controls.Add(btnListChanges);
             pnlButtons.Dock = DockStyle.Bottom;
             pnlButtons.Location = new Point(0, 776);
-            pnlButtons.Margin = new Padding(4, 4, 4, 4);
+            pnlButtons.Margin = new Padding(4);
             pnlButtons.Name = "pnlButtons";
             pnlButtons.Size = new Size(968, 55);
             pnlButtons.TabIndex = 2;
+            pnlButtons.Paint += pnlButtons_Paint;
             // 
             // btnClose
             // 
             btnClose.DialogResult = DialogResult.OK;
             btnClose.Dock = DockStyle.Right;
             btnClose.Location = new Point(843, 0);
-            btnClose.Margin = new Padding(4, 4, 4, 4);
+            btnClose.Margin = new Padding(4);
             btnClose.Name = "btnClose";
             btnClose.Size = new Size(125, 55);
             btnClose.TabIndex = 0;
@@ -96,7 +97,7 @@ namespace CalendarExpansionVisualizer
             btnListChanges.Dock = DockStyle.Left;
             btnListChanges.Enabled = false;
             btnListChanges.Location = new Point(0, 0);
-            btnListChanges.Margin = new Padding(4, 4, 4, 4);
+            btnListChanges.Margin = new Padding(4);
             btnListChanges.Name = "btnListChanges";
             btnListChanges.Size = new Size(290, 55);
             btnListChanges.TabIndex = 1;
@@ -125,7 +126,7 @@ namespace CalendarExpansionVisualizer
             Controls.Add(txtWarn);
             Controls.Add(pnlButtons);
             Controls.Add(lblTitle);
-            Margin = new Padding(4, 4, 4, 4);
+            Margin = new Padding(4);
             MinimumSize = new Size(620, 486);
             Name = "EventInformationForm";
             StartPosition = FormStartPosition.CenterParent;

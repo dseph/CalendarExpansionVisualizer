@@ -48,6 +48,13 @@ namespace CalendarExpansionVisualizer
 
         // The series master's own attachments, used to diff against exception occurrences.
         public List<AttachmentInfo> MasterAttachments { get; } = new();
+
+        // Whole-series attachment aggregates: the master's stored attachments plus each
+        // exception occurrence's own stored attachments. Populated when the exception
+        // attachment scan runs; the master's own attachments always count.
+        public int SeriesAttachmentCount { get; set; }
+        public long SeriesAttachmentTotalSize { get; set; }
+        public bool HasSeriesAttachmentInfo { get; set; }
     }
 
 
@@ -333,6 +340,12 @@ namespace CalendarExpansionVisualizer
                 }
                 details.AttachmentCount = count;
                 details.AttachmentsTotalSize = totalSize;
+
+                // Seed the whole-series aggregates with the master's own attachments. The
+                // exception scan (if it runs) adds each exception occurrence's attachments.
+                details.SeriesAttachmentCount = count;
+                details.SeriesAttachmentTotalSize = totalSize;
+                details.HasSeriesAttachmentInfo = true;
             }
 
             if (root.TryGetProperty("singleValueExtendedProperties", out var svep) &&
@@ -614,6 +627,11 @@ namespace CalendarExpansionVisualizer
                 var occKeys = new HashSet<string>(
                     occAttachments.Select(AttachmentKey), StringComparer.OrdinalIgnoreCase);
 
+                // This exception is a separately stored item; add its attachments to the
+                // whole-series aggregates (the master's were seeded already).
+                details.SeriesAttachmentCount += occAttachments.Count;
+                details.SeriesAttachmentTotalSize += occAttachments.Sum(a => a.Size ?? 0);
+
                 foreach (AttachmentInfo a in occAttachments)
                 {
                     if (!masterSet.Contains(AttachmentKey(a)))
@@ -643,6 +661,121 @@ namespace CalendarExpansionVisualizer
         }
 
         private static string AttachmentKey(AttachmentInfo a) => $"{a.Name}|{a.Size}";
+
+        /// <summary>
+        /// Sums the attachments across every instance of an event that falls within the
+        /// given window. For a recurring series this expands the master's occurrences over
+        /// the window (each occurrence carries its own attachments); for a single meeting
+        /// it uses the event's own attachments. Returns whether the data was retrievable.
+        /// </summary>
+        public async Task<(int Count, long TotalSize, bool Known)> GetRangeAttachmentSummaryAsync(
+            AuthFlow flow, string? upn, string eventId, bool isRecurring,
+            DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
+                : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
+
+            // Non-recurring meeting: its own attachments are the only ones in range.
+            if (!isRecurring)
+            {
+                string singleUrl = $"{basePath}?$select=id&$expand=attachments($select=size)";
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, singleUrl);
+                    using var resp = await _http.SendAsync(req, cancellationToken);
+                    string body = await resp.Content.ReadAsStringAsync(cancellationToken);
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        return (0, 0, false);
+                    }
+
+                    using var d = JsonDocument.Parse(body);
+                    return (SumAttachments(d.RootElement), SumAttachmentSizes(d.RootElement), true);
+                }
+                catch (HttpRequestException)
+                {
+                    return (0, 0, false);
+                }
+            }
+
+            string startText = start.ToString("yyyy-MM-ddTHH:mm:ss");
+            string endText = end.ToString("yyyy-MM-ddTHH:mm:ss");
+            string? url =
+                $"{basePath}/instances?startDateTime={Uri.EscapeDataString(startText)}" +
+                $"&endDateTime={Uri.EscapeDataString(endText)}" +
+                "&$select=id,type&$expand=attachments($select=size)&$top=100";
+
+            int count = 0;
+            long totalSize = 0;
+            int pageGuard = 0;
+
+            try
+            {
+                while (!string.IsNullOrEmpty(url) && pageGuard++ < 100)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Add("Prefer", $"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"");
+
+                    using var response = await _http.SendAsync(request, cancellationToken);
+                    string content = await response.Content.ReadAsStringAsync(cancellationToken);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return (0, 0, false);
+                    }
+
+                    using var doc = JsonDocument.Parse(content);
+                    JsonElement root = doc.RootElement;
+
+                    if (root.TryGetProperty("value", out var value) &&
+                        value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in value.EnumerateArray())
+                        {
+                            count += SumAttachments(item);
+                            totalSize += SumAttachmentSizes(item);
+                        }
+                    }
+
+                    url = root.TryGetProperty("@odata.nextLink", out var next)
+                        ? next.GetString()
+                        : null;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                return (0, 0, false);
+            }
+
+            return (count, totalSize, true);
+        }
+
+        private static int SumAttachments(JsonElement item)
+        {
+            if (item.TryGetProperty("attachments", out var arr) &&
+                arr.ValueKind == JsonValueKind.Array)
+            {
+                return arr.GetArrayLength();
+            }
+            return 0;
+        }
+
+        private static long SumAttachmentSizes(JsonElement item)
+        {
+            long total = 0;
+            if (item.TryGetProperty("attachments", out var arr) &&
+                arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var att in arr.EnumerateArray())
+                {
+                    if (att.TryGetProperty("size", out var sz) && sz.TryGetInt64(out long s))
+                    {
+                        total += s;
+                    }
+                }
+            }
+            return total;
+        }
 
         private static string GetDateTimeText(JsonElement element, string name)
         {

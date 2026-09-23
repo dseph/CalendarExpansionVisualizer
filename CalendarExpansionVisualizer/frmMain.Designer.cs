@@ -78,9 +78,9 @@
             grpAuth.Controls.Add(lblCloud);
             grpAuth.Controls.Add(cboCloud);
             grpAuth.Location = new Point(15, 15);
-            grpAuth.Margin = new Padding(4, 4, 4, 4);
+            grpAuth.Margin = new Padding(4);
             grpAuth.Name = "grpAuth";
-            grpAuth.Padding = new Padding(4, 4, 4, 4);
+            grpAuth.Padding = new Padding(4);
             grpAuth.Size = new Size(1075, 262);
             grpAuth.TabIndex = 0;
             grpAuth.TabStop = false;
@@ -89,13 +89,11 @@
             // rbDelegated
             // 
             rbDelegated.AutoSize = true;
-            rbDelegated.Checked = true;
             rbDelegated.Location = new Point(19, 31);
-            rbDelegated.Margin = new Padding(4, 4, 4, 4);
+            rbDelegated.Margin = new Padding(4);
             rbDelegated.Name = "rbDelegated";
             rbDelegated.Size = new Size(166, 29);
             rbDelegated.TabIndex = 0;
-            rbDelegated.TabStop = true;
             rbDelegated.Text = "Delegated (user)";
             rbDelegated.UseVisualStyleBackColor = true;
             rbDelegated.CheckedChanged += AuthFlowChanged;
@@ -104,7 +102,7 @@
             // 
             rbApplication.AutoSize = true;
             rbApplication.Location = new Point(238, 31);
-            rbApplication.Margin = new Padding(4, 4, 4, 4);
+            rbApplication.Margin = new Padding(4);
             rbApplication.Name = "rbApplication";
             rbApplication.Size = new Size(214, 29);
             rbApplication.TabIndex = 1;
@@ -115,11 +113,13 @@
             // rbMicrosoftApp
             // 
             rbMicrosoftApp.AutoSize = true;
+            rbMicrosoftApp.Checked = true;
             rbMicrosoftApp.Location = new Point(500, 31);
-            rbMicrosoftApp.Margin = new Padding(4, 4, 4, 4);
+            rbMicrosoftApp.Margin = new Padding(4);
             rbMicrosoftApp.Name = "rbMicrosoftApp";
             rbMicrosoftApp.Size = new Size(269, 29);
             rbMicrosoftApp.TabIndex = 2;
+            rbMicrosoftApp.TabStop = true;
             rbMicrosoftApp.Text = "Microsoft App ID (delegated)";
             rbMicrosoftApp.UseVisualStyleBackColor = true;
             rbMicrosoftApp.CheckedChanged += AuthFlowChanged;
@@ -137,7 +137,7 @@
             // txtTenantId
             // 
             txtTenantId.Location = new Point(162, 71);
-            txtTenantId.Margin = new Padding(4, 4, 4, 4);
+            txtTenantId.Margin = new Padding(4);
             txtTenantId.Name = "txtTenantId";
             txtTenantId.Size = new Size(374, 31);
             txtTenantId.TabIndex = 2;
@@ -155,7 +155,7 @@
             // txtClientId
             // 
             txtClientId.Location = new Point(162, 112);
-            txtClientId.Margin = new Padding(4, 4, 4, 4);
+            txtClientId.Margin = new Padding(4);
             txtClientId.Name = "txtClientId";
             txtClientId.Size = new Size(374, 31);
             txtClientId.TabIndex = 3;
@@ -173,7 +173,7 @@
             // txtClientSecret
             // 
             txtClientSecret.Location = new Point(162, 154);
-            txtClientSecret.Margin = new Padding(4, 4, 4, 4);
+            txtClientSecret.Margin = new Padding(4);
             txtClientSecret.Name = "txtClientSecret";
             txtClientSecret.Size = new Size(374, 31);
             txtClientSecret.TabIndex = 4;
@@ -192,7 +192,7 @@
             // txtRedirectUri
             // 
             txtRedirectUri.Location = new Point(700, 71);
-            txtRedirectUri.Margin = new Padding(4, 4, 4, 4);
+            txtRedirectUri.Margin = new Padding(4);
             txtRedirectUri.Name = "txtRedirectUri";
             txtRedirectUri.Size = new Size(349, 31);
             txtRedirectUri.TabIndex = 5;
@@ -212,7 +212,7 @@
             // 
             txtUpn.Enabled = false;
             txtUpn.Location = new Point(700, 112);
-            txtUpn.Margin = new Padding(4, 4, 4, 4);
+            txtUpn.Margin = new Padding(4);
             txtUpn.Name = "txtUpn";
             txtUpn.Size = new Size(349, 31);
             txtUpn.TabIndex = 6;
@@ -220,7 +220,7 @@
             // btnGetToken
             // 
             btnGetToken.Location = new Point(162, 200);
-            btnGetToken.Margin = new Padding(4, 4, 4, 4);
+            btnGetToken.Margin = new Padding(4);
             btnGetToken.Name = "btnGetToken";
             btnGetToken.Size = new Size(175, 44);
             btnGetToken.TabIndex = 7;
@@ -245,7 +245,7 @@
             lblCloud.Location = new Point(790, 37);
             lblCloud.Margin = new Padding(4, 0, 4, 0);
             lblCloud.Name = "lblCloud";
-            lblCloud.Size = new Size(60, 25);
+            lblCloud.Size = new Size(59, 25);
             lblCloud.TabIndex = 9;
             lblCloud.Text = "Cloud";
             // 
@@ -255,7 +255,7 @@
             cboCloud.FormattingEnabled = true;
             cboCloud.Items.AddRange(new object[] { "Commercial", "GCC", "GCC High", "DoD" });
             cboCloud.Location = new Point(860, 33);
-            cboCloud.Margin = new Padding(4, 4, 4, 4);
+            cboCloud.Margin = new Padding(4);
             cboCloud.Name = "cboCloud";
             cboCloud.Size = new Size(195, 33);
             cboCloud.TabIndex = 10;
@@ -278,9 +278,9 @@
             grpQuery.Controls.Add(rbListBoth);
             grpQuery.Controls.Add(btnList);
             grpQuery.Location = new Point(15, 285);
-            grpQuery.Margin = new Padding(4, 4, 4, 4);
+            grpQuery.Margin = new Padding(4);
             grpQuery.Name = "grpQuery";
-            grpQuery.Padding = new Padding(4, 4, 4, 4);
+            grpQuery.Padding = new Padding(4);
             grpQuery.Size = new Size(1215, 181);
             grpQuery.TabIndex = 1;
             grpQuery.TabStop = false;
@@ -300,7 +300,7 @@
             // 
             dtpStart.Format = DateTimePickerFormat.Short;
             dtpStart.Location = new Point(119, 38);
-            dtpStart.Margin = new Padding(4, 4, 4, 4);
+            dtpStart.Margin = new Padding(4);
             dtpStart.Name = "dtpStart";
             dtpStart.Size = new Size(224, 31);
             dtpStart.TabIndex = 0;
@@ -320,7 +320,7 @@
             // 
             dtpEnd.Format = DateTimePickerFormat.Short;
             dtpEnd.Location = new Point(462, 38);
-            dtpEnd.Margin = new Padding(4, 4, 4, 4);
+            dtpEnd.Margin = new Padding(4);
             dtpEnd.Name = "dtpEnd";
             dtpEnd.Size = new Size(224, 31);
             dtpEnd.TabIndex = 1;
@@ -329,7 +329,7 @@
             // 
             btnFetch.Enabled = false;
             btnFetch.Location = new Point(725, 31);
-            btnFetch.Margin = new Padding(4, 4, 4, 4);
+            btnFetch.Margin = new Padding(4);
             btnFetch.Name = "btnFetch";
             btnFetch.Size = new Size(150, 44);
             btnFetch.TabIndex = 2;
@@ -341,7 +341,7 @@
             // 
             btnCheck.Enabled = false;
             btnCheck.Location = new Point(888, 31);
-            btnCheck.Margin = new Padding(4, 4, 4, 4);
+            btnCheck.Margin = new Padding(4);
             btnCheck.Name = "btnCheck";
             btnCheck.Size = new Size(162, 44);
             btnCheck.TabIndex = 3;
@@ -362,7 +362,7 @@
             // txtLogPath
             // 
             txtLogPath.Location = new Point(119, 88);
-            txtLogPath.Margin = new Padding(4, 4, 4, 4);
+            txtLogPath.Margin = new Padding(4);
             txtLogPath.Name = "txtLogPath";
             txtLogPath.Size = new Size(755, 31);
             txtLogPath.TabIndex = 4;
@@ -370,7 +370,7 @@
             // btnBrowseLog
             // 
             btnBrowseLog.Location = new Point(888, 83);
-            btnBrowseLog.Margin = new Padding(4, 4, 4, 4);
+            btnBrowseLog.Margin = new Padding(4);
             btnBrowseLog.Name = "btnBrowseLog";
             btnBrowseLog.Size = new Size(162, 40);
             btnBrowseLog.TabIndex = 5;
@@ -382,7 +382,7 @@
             // 
             chkEnableLog.AutoSize = true;
             chkEnableLog.Location = new Point(1058, 92);
-            chkEnableLog.Margin = new Padding(4, 4, 4, 4);
+            chkEnableLog.Margin = new Padding(4);
             chkEnableLog.Name = "chkEnableLog";
             chkEnableLog.Size = new Size(157, 29);
             chkEnableLog.TabIndex = 6;
@@ -404,7 +404,7 @@
             rbListExceptions.AutoSize = true;
             rbListExceptions.Checked = true;
             rbListExceptions.Location = new Point(188, 137);
-            rbListExceptions.Margin = new Padding(4, 4, 4, 4);
+            rbListExceptions.Margin = new Padding(4);
             rbListExceptions.Name = "rbListExceptions";
             rbListExceptions.Size = new Size(121, 29);
             rbListExceptions.TabIndex = 7;
@@ -416,7 +416,7 @@
             // 
             rbListDeletions.AutoSize = true;
             rbListDeletions.Location = new Point(338, 137);
-            rbListDeletions.Margin = new Padding(4, 4, 4, 4);
+            rbListDeletions.Margin = new Padding(4);
             rbListDeletions.Name = "rbListDeletions";
             rbListDeletions.Size = new Size(111, 29);
             rbListDeletions.TabIndex = 8;
@@ -427,7 +427,7 @@
             // 
             rbListBoth.AutoSize = true;
             rbListBoth.Location = new Point(475, 137);
-            rbListBoth.Margin = new Padding(4, 4, 4, 4);
+            rbListBoth.Margin = new Padding(4);
             rbListBoth.Name = "rbListBoth";
             rbListBoth.Size = new Size(235, 29);
             rbListBoth.TabIndex = 9;
@@ -438,7 +438,7 @@
             // 
             btnList.Enabled = false;
             btnList.Location = new Point(888, 131);
-            btnList.Margin = new Padding(4, 4, 4, 4);
+            btnList.Margin = new Padding(4);
             btnList.Name = "btnList";
             btnList.Size = new Size(162, 40);
             btnList.TabIndex = 10;
@@ -453,7 +453,7 @@
             dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvEvents.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvEvents.Location = new Point(15, 474);
-            dgvEvents.Margin = new Padding(4, 4, 4, 4);
+            dgvEvents.Margin = new Padding(4);
             dgvEvents.Name = "dgvEvents";
             dgvEvents.ReadOnly = true;
             dgvEvents.RowHeadersWidth = 51;
@@ -480,10 +480,11 @@
             Controls.Add(grpQuery);
             Controls.Add(dgvEvents);
             Controls.Add(lblStatus);
-            Margin = new Padding(4, 4, 4, 4);
+            Margin = new Padding(4);
             MinimumSize = new Size(1122, 966);
             Name = "frmMain";
             Text = "Calendar Expansion Visualizer";
+            Load += frmMain_Load;
             grpAuth.ResumeLayout(false);
             grpAuth.PerformLayout();
             grpQuery.ResumeLayout(false);
