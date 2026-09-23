@@ -64,5 +64,10 @@ namespace CalendarExpansionVisualizer
             using var form = new RecurrenceChangesForm(_changesSubject, _recurrenceChanges);
             form.ShowDialog(this);
         }
+
+        private void pnlButtons_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
     }
 }

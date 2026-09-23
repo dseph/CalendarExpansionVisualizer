@@ -46,5 +46,10 @@ namespace CalendarExpansionVisualizer
             txtOutput.SelectionStart = 0;
             txtOutput.SelectionLength = 0;
         }
+
+        private void txtOutput_TextChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }

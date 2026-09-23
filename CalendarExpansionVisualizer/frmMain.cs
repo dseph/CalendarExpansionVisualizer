@@ -8,7 +8,12 @@ namespace CalendarExpansionVisualizer
         private AuthFlow _flow = AuthFlow.Delegated;
         private List<MeetingRow>? _lastCheckRows;
         private bool _checkMode;
-        private bool _useMicrosoftAppId;
+        private bool _useMicrosoftAppId = true;
+
+        // The date window used by the most recent Check, reused when computing in-range
+        // attachment metrics for the Event Information form.
+        private DateTimeOffset _lastWindowStart;
+        private DateTimeOffset _lastWindowEnd;
 
         // Well-known Microsoft first-party public client (Microsoft Graph PowerShell).
         // Lets a user sign in interactively without registering their own application.
@@ -26,6 +31,9 @@ namespace CalendarExpansionVisualizer
             public int ExceptionsInRange { get; set; }
             public int DeletionsInRange { get; set; }
 
+            // Colour for the Subject cell, based on how long the recurrence runs.
+            public Color SubjectColor { get; set; } = Color.Black;
+
             // Whole-series totals (across the entire recurrence, not just the window).
             // Null until computed on demand when the Event Information form is opened.
             public int? TotalInstances { get; set; }
@@ -33,6 +41,15 @@ namespace CalendarExpansionVisualizer
             public int? TotalDeletions { get; set; }
             public string? TotalScopeNote { get; set; }
             public bool TotalsComputed { get; set; }
+
+            // Cached one-line status describing the whole event's span and change counts,
+            // shown in the status bar when the row is clicked. Null until first computed.
+            public string? SeriesStatusText { get; set; }
+
+            // Attachment metrics for the instances within the selected date range.
+            public int? RangeAttachmentCount { get; set; }
+            public long? RangeAttachmentTotalSize { get; set; }
+            public bool RangeAttachmentsComputed { get; set; }
         }
 
         public frmMain()
@@ -52,6 +69,7 @@ namespace CalendarExpansionVisualizer
             UpdateAuthFieldStates();
 
             dgvEvents.CellDoubleClick += dgvEvents_CellDoubleClick;
+            dgvEvents.CellClick += dgvEvents_CellClick;
         }
 
         private void AuthFlowChanged(object? sender, EventArgs e)
@@ -328,6 +346,9 @@ namespace CalendarExpansionVisualizer
                     _flow, upn, new DateTimeOffset(start), new DateTimeOffset(end),
                     CancellationToken.None);
 
+                _lastWindowStart = new DateTimeOffset(start);
+                _lastWindowEnd = new DateTimeOffset(end);
+
                 DateOnly winStart = DateOnly.FromDateTime(start.Date);
                 DateOnly winEnd = DateOnly.FromDateTime(end.Date);
 
@@ -456,7 +477,8 @@ namespace CalendarExpansionVisualizer
                 {
                     Subject = $"{subject} ({recurType})",
                     EventId = masterId,
-                    IsRecurring = true
+                    IsRecurring = true,
+                    SubjectColor = SubjectColorFor(master?.Recurrence)
                 };
 
                 // Expected pattern dates -> detect deletions.
@@ -521,6 +543,7 @@ namespace CalendarExpansionVisualizer
                     Subject = $"{subject} ({recurType})",
                     EventId = master.Id,
                     IsRecurring = true,
+                    SubjectColor = SubjectColorFor(master.Recurrence),
                     SortKey = new DateTimeOffset(master.Recurrence.RangeStart.ToDateTime(TimeOnly.MinValue))
                 };
 
@@ -542,6 +565,43 @@ namespace CalendarExpansionVisualizer
                 .OrderBy(r => r.SortKey)
                 .ThenBy(r => r.Subject, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Colour for a recurring meeting's Subject based on how long the series runs:
+        /// dark orange when it spans between one and two years, red when it spans over two
+        /// years or has no end date, otherwise black.
+        /// </summary>
+        private static Color SubjectColorFor(RecurrenceInfo? r)
+        {
+            if (r is null)
+            {
+                return Color.Black;
+            }
+
+            // No end date -> red.
+            if (r.RangeType == "noEnd")
+            {
+                return Color.Red;
+            }
+
+            (DateOnly? end, _) = RecurrenceExpander.Summarize(r);
+            if (end is not { } effectiveEnd)
+            {
+                // No computable end date behaves like an open-ended series.
+                return Color.Red;
+            }
+
+            int days = effectiveEnd.DayNumber - r.RangeStart.DayNumber;
+            if (days > 730)
+            {
+                return Color.Red;          // over two years
+            }
+            if (days >= 365)
+            {
+                return Color.DarkOrange;   // between one and two years
+            }
+            return Color.Black;
         }
 
         private static bool RecurrenceOverlaps(RecurrenceInfo r, DateOnly winStart, DateOnly winEnd)
@@ -608,6 +668,7 @@ namespace CalendarExpansionVisualizer
                 int rowIndex = dgvEvents.Rows.Add();
                 DataGridViewRow gridRow = dgvEvents.Rows[rowIndex];
                 gridRow.Cells[0].Value = meeting.Subject;
+                gridRow.Cells[0].Style.ForeColor = meeting.SubjectColor;
 
                 for (int i = 0; i < dayColumns.Count; i++)
                 {
@@ -767,6 +828,19 @@ namespace CalendarExpansionVisualizer
                     row.TotalsComputed = true;
                 }
 
+                if (!row.RangeAttachmentsComputed)
+                {
+                    (int rc, long rt, bool known) = await client.GetRangeAttachmentSummaryAsync(
+                        _flow, upn, row.EventId, row.IsRecurring,
+                        _lastWindowStart, _lastWindowEnd, CancellationToken.None);
+                    if (known)
+                    {
+                        row.RangeAttachmentCount = rc;
+                        row.RangeAttachmentTotalSize = rt;
+                    }
+                    row.RangeAttachmentsComputed = true;
+                }
+
                 (string body, List<string> warnings) = BuildEventInformation(details, row);
                 using var form = new EventInformationForm(details.Subject, body, warnings);
                 form.SetRecurrenceChanges(details.Subject, details.SeriesChanges);
@@ -781,6 +855,98 @@ namespace CalendarExpansionVisualizer
             {
                 SetBusy(false, null);
             }
+        }
+
+        private async void dgvEvents_CellClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (!_checkMode || _lastCheckRows is null || e.RowIndex < 0 ||
+                e.RowIndex >= _lastCheckRows.Count)
+            {
+                return;
+            }
+
+            MeetingRow row = _lastCheckRows[e.RowIndex];
+
+            // Show a cached summary immediately if we already computed it.
+            if (row.SeriesStatusText is not null)
+            {
+                lblStatus.Text = row.SeriesStatusText;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(row.EventId))
+            {
+                return;
+            }
+
+            lblStatus.Text = "Loading event span...";
+            try
+            {
+                string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
+                using var client = new GraphCalendarClient(
+                    _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
+                EventDetails? details = await client.GetEventDetailsAsync(
+                    _flow, upn, row.EventId, CancellationToken.None);
+
+                if (details is null)
+                {
+                    lblStatus.Text = "Could not load event span.";
+                    return;
+                }
+
+                if (details.Recurrence is not null && !row.TotalsComputed && details.HasSeriesCounts)
+                {
+                    row.TotalInstances = details.TotalInstances;
+                    row.TotalExceptions = details.TotalExceptions;
+                    row.TotalDeletions = details.TotalDeletions;
+                    row.TotalScopeNote = details.TotalScopeNote;
+                    row.TotalsComputed = true;
+                }
+
+                row.SeriesStatusText = BuildSeriesStatus(details);
+                lblStatus.Text = row.SeriesStatusText;
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = $"Failed to load event span: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Builds the status-bar summary describing the whole event's span and the number
+        /// of exceptions and deletions across the entire series (independent of the
+        /// selected date range).
+        /// </summary>
+        private static string BuildSeriesStatus(EventDetails details)
+        {
+            string span;
+            if (details.Recurrence is { } r)
+            {
+                (DateOnly? end, _) = RecurrenceExpander.Summarize(r);
+                string endText = r.RangeType == "noEnd" || end is null
+                    ? "no end date"
+                    : end.Value.ToString("yyyy-MM-dd");
+                span = $"{r.RangeStart:yyyy-MM-dd} to {endText}";
+            }
+            else
+            {
+                string start = Or(details.Start, "(unknown)");
+                string end = Or(details.End, "(unknown)");
+                span = $"{start} to {end}";
+            }
+
+            if (details.HasSeriesCounts)
+            {
+                string instances = details.TotalInstances.HasValue
+                    ? details.TotalInstances.Value.ToString()
+                    : "unlimited";
+                int exceptions = details.TotalExceptions ?? 0;
+                int deletions = details.TotalDeletions ?? 0;
+                return $"Entire event span: {span}   |   Instances: {instances}   |   " +
+                       $"Exceptions: {exceptions}   |   Deletions: {deletions}";
+            }
+
+            return $"Entire event span: {span}   |   Instances/Exceptions/Deletions: (not available)";
         }
 
         private static (string Body, List<string> Warnings) BuildEventInformation(
@@ -902,10 +1068,23 @@ namespace CalendarExpansionVisualizer
             }
             sb.AppendLine();
 
-            sb.AppendLine("COUNTS (within the selected date range)");
+            sb.AppendLine("INSTANCE COUNTS (within the selected date range)");
             sb.AppendLine($"  Instances            : {row.InstancesInRange}");
             sb.AppendLine($"  Exceptions (modified): {row.ExceptionsInRange}");
             sb.AppendLine($"  Exception deletions  : {row.DeletionsInRange}");
+            if (row.RangeAttachmentsComputed && row.RangeAttachmentCount.HasValue)
+            {
+                int attCount = row.RangeAttachmentCount.Value;
+                long attTotal = row.RangeAttachmentTotalSize ?? 0;
+                long? attAverage = attCount > 0 ? attTotal / attCount : (long?)null;
+                sb.AppendLine($"  Attachments (count)  : {attCount}");
+                sb.AppendLine($"  Attachments total    : {FormatSize(attTotal)}");
+                sb.AppendLine($"  Attachments average  : {FormatSize(attAverage)}");
+            }
+            else
+            {
+                sb.AppendLine("  Attachments          : (not available)");
+            }
 
             if (row.IsRecurring)
             {
@@ -913,7 +1092,7 @@ namespace CalendarExpansionVisualizer
                 string scope = string.IsNullOrEmpty(row.TotalScopeNote)
                     ? "entire series"
                     : row.TotalScopeNote;
-                sb.AppendLine($"COUNTS (whole calendar item - {scope})");
+                sb.AppendLine($"INSTANCE COUNTS (whole calendar item - {scope})");
                 if (row.TotalsComputed)
                 {
                     string instances = row.TotalInstances.HasValue
@@ -926,6 +1105,20 @@ namespace CalendarExpansionVisualizer
                 else
                 {
                     sb.AppendLine("  (not available)");
+                }
+
+                if (details.HasSeriesAttachmentInfo)
+                {
+                    int attCount = details.SeriesAttachmentCount;
+                    long attTotal = details.SeriesAttachmentTotalSize;
+                    long? attAverage = attCount > 0 ? attTotal / attCount : (long?)null;
+                    sb.AppendLine($"  Attachments (count)  : {attCount}");
+                    sb.AppendLine($"  Attachments total    : {FormatSize(attTotal)}");
+                    sb.AppendLine($"  Attachments average  : {FormatSize(attAverage)}");
+                }
+                else
+                {
+                    sb.AppendLine("  Attachments          : (not available)");
                 }
             }
 
@@ -992,6 +1185,11 @@ namespace CalendarExpansionVisualizer
             {
                 lblStatus.Text = status;
             }
+        }
+
+        private void frmMain_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }
