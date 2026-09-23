@@ -9,6 +9,9 @@ namespace CalendarExpansionVisualizer
     /// </summary>
     public sealed partial class EventInformationForm : Form
     {
+        private string _changesSubject = string.Empty;
+        private IReadOnlyList<RecurChange> _recurrenceChanges = Array.Empty<RecurChange>();
+
         public EventInformationForm()
         {
             InitializeComponent();
@@ -42,6 +45,24 @@ namespace CalendarExpansionVisualizer
                 txtWarn.Text = string.Empty;
                 txtWarn.Visible = false;
             }
+        }
+
+        /// <summary>
+        /// Supplies the whole-series exceptions/deletions for this meeting so the
+        /// "List Recurrence Changes" button can open the listing dialog. The button is
+        /// only enabled when at least one change is available.
+        /// </summary>
+        internal void SetRecurrenceChanges(string subject, IReadOnlyList<RecurChange>? changes)
+        {
+            _changesSubject = subject ?? string.Empty;
+            _recurrenceChanges = changes ?? Array.Empty<RecurChange>();
+            btnListChanges.Enabled = _recurrenceChanges.Count > 0;
+        }
+
+        private void btnListChanges_Click(object? sender, EventArgs e)
+        {
+            using var form = new RecurrenceChangesForm(_changesSubject, _recurrenceChanges);
+            form.ShowDialog(this);
         }
     }
 }

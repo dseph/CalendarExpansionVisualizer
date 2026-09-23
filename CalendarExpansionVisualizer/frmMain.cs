@@ -47,6 +47,8 @@ namespace CalendarExpansionVisualizer
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "CalendarExpansionVisualizer.log");
 
+            cboCloud.SelectedIndex = 0; // Commercial
+
             UpdateAuthFieldStates();
 
             dgvEvents.CellDoubleClick += dgvEvents_CellDoubleClick;
@@ -58,6 +60,17 @@ namespace CalendarExpansionVisualizer
             _flow = rbApplication.Checked ? AuthFlow.Application : AuthFlow.Delegated;
             UpdateAuthFieldStates();
         }
+
+        // Maps the cloud combo box selection to the sovereign cloud / Graph endpoint.
+        private SovereignCloud CurrentCloud() => cboCloud.SelectedIndex switch
+        {
+            1 => SovereignCloud.Gcc,
+            2 => SovereignCloud.GccHigh,
+            3 => SovereignCloud.Dod,
+            _ => SovereignCloud.Commercial
+        };
+
+        private string CurrentGraphRoot() => CloudEndpoints.GraphRoot(CurrentCloud());
 
         private void UpdateAuthFieldStates()
         {
@@ -135,10 +148,10 @@ namespace CalendarExpansionVisualizer
                 AuthenticationResult result = _flow == AuthFlow.Application
                     ? await AuthService.AcquireApplicationAsync(
                         tenantId, clientId,
-                        txtClientSecret.Text, CancellationToken.None)
+                        txtClientSecret.Text, CurrentCloud(), CancellationToken.None)
                     : await AuthService.AcquireDelegatedAsync(
                         tenantId, clientId,
-                        txtRedirectUri.Text.Trim(), CancellationToken.None);
+                        txtRedirectUri.Text.Trim(), CurrentCloud(), CancellationToken.None);
 
                 _accessToken = result.AccessToken;
                 lblTokenStatus.ForeColor = Color.Green;
@@ -212,7 +225,8 @@ namespace CalendarExpansionVisualizer
             SetBusy(true, "Fetching calendar view...");
             try
             {
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
+                using var client = new GraphCalendarClient(
+                    _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
                 List<CalendarInstance> events = await client.GetCalendarViewAsync(
                     _flow,
                     _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
@@ -306,7 +320,8 @@ namespace CalendarExpansionVisualizer
             SetBusy(true, "Checking calendar...");
             try
             {
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
+                using var client = new GraphCalendarClient(
+                    _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
 
                 List<CalendarInstance> instances = await client.GetCalendarViewAsync(
@@ -669,7 +684,8 @@ namespace CalendarExpansionVisualizer
             try
             {
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
+                using var client = new GraphCalendarClient(
+                    _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
                 EventDetails? details = await client.GetEventDetailsAsync(
                     _flow, upn, row.EventId, CancellationToken.None);
 
@@ -680,21 +696,16 @@ namespace CalendarExpansionVisualizer
                     return;
                 }
 
-                var selected = details.SeriesChanges
-                    .Where(c => (c.Kind == RecurChangeKind.Exception && wantExceptions) ||
-                                (c.Kind == RecurChangeKind.Deletion && wantDeletions))
-                    // "Date range" is the new range for an exception and the original
-                    // occurrence range for a deletion; sort newest to oldest by it.
-                    .OrderByDescending(c => c.Kind == RecurChangeKind.Exception ? c.Start : c.OriginalStart)
-                    .ToList();
-
-                (string body, string title) = BuildChangeListing(
-                    details.Subject, selected, wantExceptions, wantDeletions, showKindLabel);
+                (string body, string title) = RecurrenceChangeReport.Build(
+                    details.Subject, details.SeriesChanges, wantExceptions, wantDeletions, showKindLabel);
 
                 using var form = new EventInformationForm(title, body, Array.Empty<string>());
                 form.ShowDialog(this);
 
-                lblStatus.Text = $"Listed {selected.Count} change(s) for the entire series.";
+                int shown = details.SeriesChanges.Count(c =>
+                    (c.Kind == RecurChangeKind.Exception && wantExceptions) ||
+                    (c.Kind == RecurChangeKind.Deletion && wantDeletions));
+                lblStatus.Text = $"Listed {shown} change(s) for the entire series.";
             }
             catch (Exception ex)
             {
@@ -705,83 +716,6 @@ namespace CalendarExpansionVisualizer
             {
                 SetBusy(false, null);
             }
-        }
-
-        private static (string Body, string Title) BuildChangeListing(
-            string subject, List<RecurChange> changes,
-            bool wantExceptions, bool wantDeletions, bool showKindLabel)
-        {
-            string what = (wantExceptions, wantDeletions) switch
-            {
-                (true, true) => "Exceptions and Deletions",
-                (true, false) => "Exceptions",
-                (false, true) => "Deletions",
-                _ => "Changes"
-            };
-
-            string title = $"{subject} \u2014 {what} (entire series)";
-
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine(title);
-            sb.AppendLine($"Total: {changes.Count}   (newest to oldest, whole series including outside the search range)");
-            sb.AppendLine();
-
-            if (changes.Count == 0)
-            {
-                sb.AppendLine($"(no {what.ToLowerInvariant()} found for this series)");
-                return (sb.ToString(), title);
-            }
-
-            foreach (RecurChange c in changes)
-            {
-                // Date range first.
-                if (c.Kind == RecurChangeKind.Exception)
-                {
-                    sb.AppendLine(FormatRange(c.Start, c.End));
-                }
-                else
-                {
-                    sb.AppendLine(FormatRange(c.OriginalStart, c.OriginalEnd));
-                }
-
-                // Then the type label (required when listing both kinds) and details.
-                if (showKindLabel)
-                {
-                    sb.AppendLine(c.Kind == RecurChangeKind.Exception ? "  Exception" : "  Deletion");
-                }
-
-                if (c.Kind == RecurChangeKind.Exception)
-                {
-                    sb.AppendLine($"    Original occurrence : {FormatRange(c.OriginalStart, c.OriginalEnd)}");
-                    if (!string.IsNullOrEmpty(c.Subject))
-                    {
-                        sb.AppendLine($"    Subject override    : {c.Subject}");
-                    }
-                    if (!string.IsNullOrEmpty(c.Location))
-                    {
-                        sb.AppendLine($"    Location override   : {c.Location}");
-                    }
-                    if (string.IsNullOrEmpty(c.Subject) && string.IsNullOrEmpty(c.Location))
-                    {
-                        sb.AppendLine("    (time changed; no subject/location override)");
-                    }
-                }
-                else
-                {
-                    sb.AppendLine($"    Removed occurrence originally on {c.OriginalStart:yyyy-MM-dd}");
-                }
-
-                sb.AppendLine();
-            }
-
-            return (sb.ToString(), title);
-        }
-
-        private static string FormatRange(DateTime start, DateTime end)
-        {
-            return start.Date == end.Date
-                ? $"{start:yyyy-MM-dd HH:mm} \u2013 {end:HH:mm}"
-                : $"{start:yyyy-MM-dd HH:mm} \u2013 {end:yyyy-MM-dd HH:mm}";
         }
 
         private async void dgvEvents_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
@@ -809,7 +743,8 @@ namespace CalendarExpansionVisualizer
             try
             {
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
-                using var client = new GraphCalendarClient(_accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked);
+                using var client = new GraphCalendarClient(
+                    _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
                 EventDetails? details = await client.GetEventDetailsAsync(
                     _flow, upn, row.EventId, CancellationToken.None);
 
@@ -834,6 +769,7 @@ namespace CalendarExpansionVisualizer
 
                 (string body, List<string> warnings) = BuildEventInformation(details, row);
                 using var form = new EventInformationForm(details.Subject, body, warnings);
+                form.SetRecurrenceChanges(details.Subject, details.SeriesChanges);
                 form.ShowDialog(this);
             }
             catch (Exception ex)
@@ -883,6 +819,12 @@ namespace CalendarExpansionVisualizer
                     sb.AppendLine($"  {a}");
                 }
             }
+            sb.AppendLine();
+
+            sb.AppendLine("STORAGE");
+            sb.AppendLine($"  Calendar record size : {FormatSize(details.MessageSize)}");
+            sb.AppendLine($"  Attachments          : {(details.AttachmentCount?.ToString() ?? "(unknown)")}");
+            sb.AppendLine($"  Attachments size     : {FormatSize(details.AttachmentsTotalSize)}");
             sb.AppendLine();
 
             sb.AppendLine("RECURRENCE");
@@ -992,6 +934,28 @@ namespace CalendarExpansionVisualizer
 
         private static string Or(string value, string fallback)
             => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+        private static string FormatSize(long? bytes)
+        {
+            if (bytes is not { } b)
+            {
+                return "(unknown)";
+            }
+
+            string[] units = { "bytes", "KB", "MB", "GB" };
+            double size = b;
+            int unit = 0;
+            while (size >= 1024 && unit < units.Length - 1)
+            {
+                size /= 1024;
+                unit++;
+            }
+
+            string human = unit == 0
+                ? $"{b} {units[unit]}"
+                : $"{size:0.##} {units[unit]} ({b:N0} bytes)";
+            return human;
+        }
 
 
         private void btnBrowseLog_Click(object? sender, EventArgs e)

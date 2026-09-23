@@ -32,6 +32,7 @@ namespace CalendarExpansionVisualizer
             txtWarn = new TextBox();
             pnlButtons = new Panel();
             btnClose = new Button();
+            btnListChanges = new Button();
             lblTitle = new Label();
             pnlButtons.SuspendLayout();
             SuspendLayout();
@@ -70,6 +71,7 @@ namespace CalendarExpansionVisualizer
             // pnlButtons
             // 
             pnlButtons.Controls.Add(btnClose);
+            pnlButtons.Controls.Add(btnListChanges);
             pnlButtons.Dock = DockStyle.Bottom;
             pnlButtons.Location = new Point(0, 776);
             pnlButtons.Margin = new Padding(4, 4, 4, 4);
@@ -88,6 +90,19 @@ namespace CalendarExpansionVisualizer
             btnClose.TabIndex = 0;
             btnClose.Text = "Close";
             btnClose.UseVisualStyleBackColor = true;
+            // 
+            // btnListChanges
+            // 
+            btnListChanges.Dock = DockStyle.Left;
+            btnListChanges.Enabled = false;
+            btnListChanges.Location = new Point(0, 0);
+            btnListChanges.Margin = new Padding(4, 4, 4, 4);
+            btnListChanges.Name = "btnListChanges";
+            btnListChanges.Size = new Size(290, 55);
+            btnListChanges.TabIndex = 1;
+            btnListChanges.Text = "List Recurrence Changes";
+            btnListChanges.UseVisualStyleBackColor = true;
+            btnListChanges.Click += btnListChanges_Click;
             // 
             // lblTitle
             // 
@@ -126,6 +141,7 @@ namespace CalendarExpansionVisualizer
         private TextBox txtWarn;
         private Panel pnlButtons;
         private Button btnClose;
+        private Button btnListChanges;
         private Label lblTitle;
     }
 }

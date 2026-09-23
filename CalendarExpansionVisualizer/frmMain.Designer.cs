@@ -33,6 +33,8 @@
             txtUpn = new TextBox();
             btnGetToken = new Button();
             lblTokenStatus = new Label();
+            lblCloud = new Label();
+            cboCloud = new ComboBox();
             grpQuery = new GroupBox();
             lblStart = new Label();
             dtpStart = new DateTimePicker();
@@ -73,6 +75,8 @@
             grpAuth.Controls.Add(txtUpn);
             grpAuth.Controls.Add(btnGetToken);
             grpAuth.Controls.Add(lblTokenStatus);
+            grpAuth.Controls.Add(lblCloud);
+            grpAuth.Controls.Add(cboCloud);
             grpAuth.Location = new Point(15, 15);
             grpAuth.Margin = new Padding(4, 4, 4, 4);
             grpAuth.Name = "grpAuth";
@@ -234,6 +238,27 @@
             lblTokenStatus.Size = new Size(159, 25);
             lblTokenStatus.TabIndex = 8;
             lblTokenStatus.Text = "No token acquired";
+            // 
+            // lblCloud
+            // 
+            lblCloud.AutoSize = true;
+            lblCloud.Location = new Point(790, 37);
+            lblCloud.Margin = new Padding(4, 0, 4, 0);
+            lblCloud.Name = "lblCloud";
+            lblCloud.Size = new Size(60, 25);
+            lblCloud.TabIndex = 9;
+            lblCloud.Text = "Cloud";
+            // 
+            // cboCloud
+            // 
+            cboCloud.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboCloud.FormattingEnabled = true;
+            cboCloud.Items.AddRange(new object[] { "Commercial", "GCC", "GCC High", "DoD" });
+            cboCloud.Location = new Point(860, 33);
+            cboCloud.Margin = new Padding(4, 4, 4, 4);
+            cboCloud.Name = "cboCloud";
+            cboCloud.Size = new Size(195, 33);
+            cboCloud.TabIndex = 10;
             // 
             // grpQuery
             // 
@@ -486,6 +511,8 @@
         private TextBox txtUpn;
         private Button btnGetToken;
         private Label lblTokenStatus;
+        private Label lblCloud;
+        private ComboBox cboCloud;
         private GroupBox grpQuery;
         private Label lblStart;
         private DateTimePicker dtpStart;
