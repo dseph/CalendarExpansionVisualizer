@@ -442,5 +442,10 @@ namespace CalendarExpansionVisualizer
                 UpdateInputStates();
             }
         }
+
+        private void frmTests_Load(object sender, EventArgs e)
+        {
+
+        }
     }
 }
