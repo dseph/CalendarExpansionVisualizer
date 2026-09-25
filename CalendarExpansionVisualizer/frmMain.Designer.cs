@@ -474,7 +474,7 @@
             // btnTests
             // 
             btnTests.Enabled = false;
-            btnTests.Location = new Point(920, 127);
+            btnTests.Location = new Point(972, 133);
             btnTests.Margin = new Padding(4);
             btnTests.Name = "btnTests";
             btnTests.Size = new Size(162, 40);
