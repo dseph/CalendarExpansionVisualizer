@@ -87,7 +87,7 @@
             // lblStart
             // 
             lblStart.AutoSize = true;
-            lblStart.Location = new Point(20, 33);
+            lblStart.Location = new Point(20, 69);
             lblStart.Name = "lblStart";
             lblStart.Size = new Size(99, 25);
             lblStart.TabIndex = 1;
@@ -97,7 +97,7 @@
             // 
             dtpStart.CustomFormat = "yyyy-MM-dd HH:mm";
             dtpStart.Format = DateTimePickerFormat.Custom;
-            dtpStart.Location = new Point(181, 29);
+            dtpStart.Location = new Point(180, 69);
             dtpStart.Name = "dtpStart";
             dtpStart.ShowUpDown = true;
             dtpStart.Size = new Size(240, 31);
@@ -106,7 +106,7 @@
             // lblEnd
             // 
             lblEnd.AutoSize = true;
-            lblEnd.Location = new Point(20, 75);
+            lblEnd.Location = new Point(20, 115);
             lblEnd.Name = "lblEnd";
             lblEnd.Size = new Size(93, 25);
             lblEnd.TabIndex = 3;
@@ -116,7 +116,7 @@
             // 
             dtpEnd.CustomFormat = "yyyy-MM-dd HH:mm";
             dtpEnd.Format = DateTimePickerFormat.Custom;
-            dtpEnd.Location = new Point(181, 71);
+            dtpEnd.Location = new Point(177, 109);
             dtpEnd.Name = "dtpEnd";
             dtpEnd.ShowUpDown = true;
             dtpEnd.Size = new Size(240, 31);
@@ -125,7 +125,7 @@
             // lblSubject
             // 
             lblSubject.AutoSize = true;
-            lblSubject.Location = new Point(20, 117);
+            lblSubject.Location = new Point(19, 150);
             lblSubject.Name = "lblSubject";
             lblSubject.Size = new Size(70, 25);
             lblSubject.TabIndex = 5;
@@ -133,7 +133,7 @@
             // 
             // txtSubject
             // 
-            txtSubject.Location = new Point(181, 113);
+            txtSubject.Location = new Point(180, 146);
             txtSubject.Name = "txtSubject";
             txtSubject.Size = new Size(490, 31);
             txtSubject.TabIndex = 6;
@@ -141,7 +141,7 @@
             // lblInterval
             // 
             lblInterval.AutoSize = true;
-            lblInterval.Location = new Point(20, 159);
+            lblInterval.Location = new Point(19, 192);
             lblInterval.Name = "lblInterval";
             lblInterval.Size = new Size(161, 25);
             lblInterval.TabIndex = 7;
@@ -149,7 +149,7 @@
             // 
             // numInterval
             // 
-            numInterval.Location = new Point(181, 157);
+            numInterval.Location = new Point(180, 190);
             numInterval.Maximum = new decimal(new int[] { 1440, 0, 0, 0 });
             numInterval.Minimum = new decimal(new int[] { 5, 0, 0, 0 });
             numInterval.Name = "numInterval";
@@ -160,7 +160,7 @@
             // lblEventId
             // 
             lblEventId.AutoSize = true;
-            lblEventId.Location = new Point(20, 201);
+            lblEventId.Location = new Point(19, 234);
             lblEventId.Name = "lblEventId";
             lblEventId.Size = new Size(76, 25);
             lblEventId.TabIndex = 9;
@@ -168,7 +168,7 @@
             // 
             // txtEventId
             // 
-            txtEventId.Location = new Point(181, 197);
+            txtEventId.Location = new Point(180, 230);
             txtEventId.Name = "txtEventId";
             txtEventId.Size = new Size(490, 31);
             txtEventId.TabIndex = 10;
@@ -176,7 +176,7 @@
             // lblSchedules
             // 
             lblSchedules.AutoSize = true;
-            lblSchedules.Location = new Point(20, 243);
+            lblSchedules.Location = new Point(19, 276);
             lblSchedules.Name = "lblSchedules";
             lblSchedules.Size = new Size(242, 25);
             lblSchedules.TabIndex = 11;
@@ -184,11 +184,11 @@
             // 
             // txtSchedules
             // 
-            txtSchedules.Location = new Point(181, 283);
+            txtSchedules.Location = new Point(181, 314);
             txtSchedules.Multiline = true;
             txtSchedules.Name = "txtSchedules";
             txtSchedules.ScrollBars = ScrollBars.Vertical;
-            txtSchedules.Size = new Size(490, 142);
+            txtSchedules.Size = new Size(490, 111);
             txtSchedules.TabIndex = 12;
             // 
             // grpTests
@@ -294,7 +294,7 @@
             // lblStartedCaption
             // 
             lblStartedCaption.AutoSize = true;
-            lblStartedCaption.Location = new Point(475, 466);
+            lblStartedCaption.Location = new Point(458, 466);
             lblStartedCaption.Name = "lblStartedCaption";
             lblStartedCaption.Size = new Size(72, 25);
             lblStartedCaption.TabIndex = 4;
@@ -303,10 +303,11 @@
             // lblStarted
             // 
             lblStarted.AutoSize = true;
-            lblStarted.Location = new Point(547, 466);
+            lblStarted.Location = new Point(536, 466);
             lblStarted.Name = "lblStarted";
-            lblStarted.Size = new Size(0, 25);
+            lblStarted.Size = new Size(19, 25);
             lblStarted.TabIndex = 5;
+            lblStarted.Text = "_";
             // 
             // lblEndedCaption
             // 
@@ -320,10 +321,11 @@
             // lblEnded
             // 
             lblEnded.AutoSize = true;
-            lblEnded.Location = new Point(893, 462);
+            lblEnded.Location = new Point(747, 462);
             lblEnded.Name = "lblEnded";
-            lblEnded.Size = new Size(0, 25);
+            lblEnded.Size = new Size(19, 25);
             lblEnded.TabIndex = 7;
+            lblEnded.Text = "_";
             // 
             // lblElapsedCaption
             // 
@@ -337,20 +339,21 @@
             // lblElapsed
             // 
             lblElapsed.AutoSize = true;
-            lblElapsed.Location = new Point(1090, 422);
+            lblElapsed.Location = new Point(1008, 466);
             lblElapsed.Name = "lblElapsed";
-            lblElapsed.Size = new Size(0, 25);
+            lblElapsed.Size = new Size(19, 25);
             lblElapsed.TabIndex = 9;
+            lblElapsed.Text = "_";
             // 
             // txtResults
             // 
             txtResults.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             txtResults.BackColor = Color.White;
             txtResults.Font = new Font("Consolas", 9F);
-            txtResults.Location = new Point(12, 497);
+            txtResults.Location = new Point(12, 503);
             txtResults.Name = "txtResults";
             txtResults.ReadOnly = true;
-            txtResults.Size = new Size(1271, 449);
+            txtResults.Size = new Size(1271, 443);
             txtResults.TabIndex = 10;
             txtResults.Text = "";
             txtResults.WordWrap = false;
@@ -375,6 +378,7 @@
             Name = "frmTests";
             StartPosition = FormStartPosition.CenterParent;
             Text = "Graph API Tests";
+            Load += frmTests_Load;
             grpInputs.ResumeLayout(false);
             grpInputs.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)numInterval).EndInit();
