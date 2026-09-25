@@ -18,6 +18,7 @@
         private void InitializeComponent()
         {
             grpAuth = new GroupBox();
+            label1 = new Label();
             rbDelegated = new RadioButton();
             rbApplication = new RadioButton();
             rbMicrosoftApp = new RadioButton();
@@ -42,6 +43,7 @@
             dtpEnd = new DateTimePicker();
             btnFetch = new Button();
             btnCheck = new Button();
+            lblElapsed = new Label();
             lblLogPath = new Label();
             txtLogPath = new TextBox();
             btnBrowseLog = new Button();
@@ -51,9 +53,9 @@
             rbListDeletions = new RadioButton();
             rbListBoth = new RadioButton();
             btnList = new Button();
+            btnTests = new Button();
             dgvEvents = new DataGridView();
             lblStatus = new Label();
-            label1 = new Label();
             grpAuth.SuspendLayout();
             grpQuery.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvEvents).BeginInit();
@@ -87,6 +89,16 @@
             grpAuth.TabIndex = 0;
             grpAuth.TabStop = false;
             grpAuth.Text = "Authentication";
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Location = new Point(571, 160);
+            label1.Margin = new Padding(4, 0, 4, 0);
+            label1.Name = "label1";
+            label1.Size = new Size(417, 25);
+            label1.TabIndex = 11;
+            label1.Text = "Note: Calendars.Read Graph is permission required.";
             // 
             // rbDelegated
             // 
@@ -270,6 +282,7 @@
             grpQuery.Controls.Add(dtpEnd);
             grpQuery.Controls.Add(btnFetch);
             grpQuery.Controls.Add(btnCheck);
+            grpQuery.Controls.Add(lblElapsed);
             grpQuery.Controls.Add(lblLogPath);
             grpQuery.Controls.Add(txtLogPath);
             grpQuery.Controls.Add(btnBrowseLog);
@@ -279,6 +292,7 @@
             grpQuery.Controls.Add(rbListDeletions);
             grpQuery.Controls.Add(rbListBoth);
             grpQuery.Controls.Add(btnList);
+            grpQuery.Controls.Add(btnTests);
             grpQuery.Location = new Point(15, 285);
             grpQuery.Margin = new Padding(4);
             grpQuery.Name = "grpQuery";
@@ -350,6 +364,15 @@
             btnCheck.Text = "Check";
             btnCheck.UseVisualStyleBackColor = true;
             btnCheck.Click += btnCheck_Click;
+            // 
+            // lblElapsed
+            // 
+            lblElapsed.AutoSize = true;
+            lblElapsed.Location = new Point(1060, 41);
+            lblElapsed.Margin = new Padding(4, 0, 4, 0);
+            lblElapsed.Name = "lblElapsed";
+            lblElapsed.Size = new Size(0, 25);
+            lblElapsed.TabIndex = 11;
             // 
             // lblLogPath
             // 
@@ -439,7 +462,7 @@
             // btnList
             // 
             btnList.Enabled = false;
-            btnList.Location = new Point(888, 131);
+            btnList.Location = new Point(748, 127);
             btnList.Margin = new Padding(4);
             btnList.Name = "btnList";
             btnList.Size = new Size(162, 40);
@@ -447,6 +470,18 @@
             btnList.Text = "List";
             btnList.UseVisualStyleBackColor = true;
             btnList.Click += btnList_Click;
+            // 
+            // btnTests
+            // 
+            btnTests.Enabled = false;
+            btnTests.Location = new Point(920, 127);
+            btnTests.Margin = new Padding(4);
+            btnTests.Name = "btnTests";
+            btnTests.Size = new Size(162, 40);
+            btnTests.TabIndex = 11;
+            btnTests.Text = "Tests";
+            btnTests.UseVisualStyleBackColor = true;
+            btnTests.Click += btnTests_Click;
             // 
             // dgvEvents
             // 
@@ -472,16 +507,6 @@
             lblStatus.Size = new Size(60, 25);
             lblStatus.TabIndex = 3;
             lblStatus.Text = "Ready";
-            // 
-            // label1
-            // 
-            label1.AutoSize = true;
-            label1.Location = new Point(571, 160);
-            label1.Margin = new Padding(4, 0, 4, 0);
-            label1.Name = "label1";
-            label1.Size = new Size(417, 25);
-            label1.TabIndex = 11;
-            label1.Text = "Note: Calendars.Read Graph is permission required.";
             // 
             // frmMain
             // 
@@ -533,6 +558,7 @@
         private DateTimePicker dtpEnd;
         private Button btnFetch;
         private Button btnCheck;
+        private Label lblElapsed;
         private Label lblLogPath;
         private TextBox txtLogPath;
         private Button btnBrowseLog;
@@ -542,6 +568,7 @@
         private RadioButton rbListDeletions;
         private RadioButton rbListBoth;
         private Button btnList;
+        private Button btnTests;
         private DataGridView dgvEvents;
         private Label lblStatus;
         private Label label1;

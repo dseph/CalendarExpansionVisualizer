@@ -177,6 +177,7 @@ namespace CalendarExpansionVisualizer
                 btnFetch.Enabled = true;
                 btnCheck.Enabled = true;
                 btnList.Enabled = true;
+                btnTests.Enabled = true;
                 lblStatus.Text = "Token acquired. Ready to fetch calendar.";
             }
             catch (MsalException ex)
@@ -185,6 +186,7 @@ namespace CalendarExpansionVisualizer
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
                 btnList.Enabled = false;
+                btnTests.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
                 MessageBox.Show(this, $"Authentication failed:\n\n{ex.Message}",
@@ -196,6 +198,7 @@ namespace CalendarExpansionVisualizer
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
                 btnList.Enabled = false;
+                btnTests.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
                 MessageBox.Show(this, $"Unexpected error:\n\n{ex.Message}",
@@ -336,6 +339,8 @@ namespace CalendarExpansionVisualizer
             }
 
             SetBusy(true, "Checking calendar...");
+            lblElapsed.Text = "";
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 using var client = new GraphCalendarClient(
@@ -367,8 +372,31 @@ namespace CalendarExpansionVisualizer
             }
             finally
             {
+                stopwatch.Stop();
+                lblElapsed.Text = $"Took {FormatElapsed(stopwatch.Elapsed)}";
                 SetBusy(false, null);
             }
+        }
+
+        /// <summary>
+        /// Formats a duration compactly as minutes, seconds and milliseconds
+        /// (e.g. "1m 05s 320ms", "12s 004ms", "742ms").
+        /// </summary>
+        private static string FormatElapsed(TimeSpan elapsed)
+        {
+            int minutes = (int)elapsed.TotalMinutes;
+            int seconds = elapsed.Seconds;
+            int millis = elapsed.Milliseconds;
+
+            if (minutes > 0)
+            {
+                return $"{minutes}m {seconds:00}s {millis:000}ms";
+            }
+            if (seconds > 0)
+            {
+                return $"{seconds}s {millis:000}ms";
+            }
+            return $"{millis}ms";
         }
 
         private static async Task<List<MeetingRow>> BuildMeetingRowsAsync(
@@ -734,6 +762,37 @@ namespace CalendarExpansionVisualizer
             }
         }
 
+
+        private void btnTests_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_accessToken))
+            {
+                MessageBox.Show(this, "Acquire a token first.",
+                    "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_flow == AuthFlow.Application && string.IsNullOrWhiteSpace(txtUpn.Text))
+            {
+                MessageBox.Show(this, "Mailbox UPN is required for the application flow.",
+                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var context = new TestContext
+            {
+                AccessToken = _accessToken,
+                Flow = _flow,
+                GraphRoot = CurrentGraphRoot(),
+                Upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
+                LogPath = txtLogPath.Text.Trim(),
+                LogEnabled = chkEnableLog.Checked,
+                CloudName = CurrentCloud().ToString()
+            };
+
+            using var tests = new frmTests(context);
+            tests.ShowDialog(this);
+        }
 
         private async void btnList_Click(object? sender, EventArgs e)
         {

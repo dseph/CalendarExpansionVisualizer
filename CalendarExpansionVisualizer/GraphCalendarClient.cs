@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace CalendarExpansionVisualizer
@@ -1008,6 +1009,139 @@ namespace CalendarExpansionVisualizer
             }
 
             return null;
+        }
+
+        // ---------------------------------------------------------------------
+        // Ad-hoc Graph calls used by the Tests window (frmTests). Each returns the
+        // raw response body; requests/responses are logged by GraphLoggingHandler
+        // when logging is enabled, so no extra logging is needed here.
+        // ---------------------------------------------------------------------
+
+        /// <summary>Mailbox root: /me for delegated, /users/{upn} for application flow.</summary>
+        private string MailboxBase(AuthFlow flow, string? upn)
+            => flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}"
+                : $"{GraphBase}/me";
+
+        private static string Utc(DateTimeOffset value)
+            => value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+        private static string EscapeFilterLiteral(string value)
+            => value.Replace("'", "''");
+
+        private async Task<string> SendGetRawAsync(
+            string url, CancellationToken cancellationToken, string? preferTimeZone = null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(preferTimeZone))
+            {
+                request.Headers.Add("Prefer", $"outlook.timezone=\"{preferTimeZone}\"");
+            }
+
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}\r\n{body}";
+        }
+
+        /// <summary>POST /calendar/getSchedule for the given schedules and window.</summary>
+        public async Task<string> GetScheduleAsync(
+            AuthFlow flow, string? upn, IEnumerable<string> schedules,
+            DateTimeOffset start, DateTimeOffset end, int availabilityViewInterval,
+            CancellationToken cancellationToken)
+        {
+            string url = $"{MailboxBase(flow, upn)}/calendar/getSchedule";
+
+            var payload = new
+            {
+                schedules = schedules.ToArray(),
+                startTime = new { dateTime = start.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss"), timeZone = "UTC" },
+                endTime = new { dateTime = end.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss"), timeZone = "UTC" },
+                availabilityViewInterval
+            };
+
+            string json = JsonSerializer.Serialize(payload);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}\r\n{body}";
+        }
+
+        /// <summary>GET /calendarView over a window (recurrences expanded).</summary>
+        public Task<string> CalendarViewRawAsync(
+            AuthFlow flow, string? upn, DateTimeOffset start, DateTimeOffset end,
+            CancellationToken cancellationToken)
+        {
+            string url =
+                $"{MailboxBase(flow, upn)}/calendarView" +
+                $"?startDateTime={Uri.EscapeDataString(Utc(start))}" +
+                $"&endDateTime={Uri.EscapeDataString(Utc(end))}" +
+                "&$select=id,subject,start,end,organizer,isAllDay,type,seriesMasterId" +
+                "&$orderby=start/dateTime&$top=50";
+
+            return SendGetRawAsync(url, cancellationToken, TimeZoneInfo.Local.Id);
+        }
+
+        /// <summary>GET /events filtered by subject within a start/end range.</summary>
+        public Task<string> SearchEventsBySubjectInRangeAsync(
+            AuthFlow flow, string? upn, string subject,
+            DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+        {
+            string filter =
+                $"subject eq '{EscapeFilterLiteral(subject)}'" +
+                $" and start/dateTime ge '{Utc(start)}'" +
+                $" and end/dateTime le '{Utc(end)}'";
+
+            string url =
+                $"{MailboxBase(flow, upn)}/events" +
+                $"?$filter={Uri.EscapeDataString(filter)}" +
+                "&$select=id,subject,start,end,type&$top=50";
+
+            return SendGetRawAsync(url, cancellationToken);
+        }
+
+        /// <summary>GET /events filtered by an exact subject across the whole mailbox.</summary>
+        public Task<string> SearchAllEventsBySubjectAsync(
+            AuthFlow flow, string? upn, string subject, CancellationToken cancellationToken)
+        {
+            string filter = $"subject eq '{EscapeFilterLiteral(subject)}'";
+
+            string url =
+                $"{MailboxBase(flow, upn)}/events" +
+                $"?$filter={Uri.EscapeDataString(filter)}" +
+                "&$select=id,subject,start,end,type&$top=50";
+
+            return SendGetRawAsync(url, cancellationToken);
+        }
+
+        /// <summary>GET /events/{id}/instances over a date/time window.</summary>
+        public Task<string> GetEventInstancesAsync(
+            AuthFlow flow, string? upn, string eventId,
+            DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+        {
+            string url =
+                $"{MailboxBase(flow, upn)}/events/{Uri.EscapeDataString(eventId)}/instances" +
+                $"?startDateTime={Uri.EscapeDataString(Utc(start))}" +
+                $"&endDateTime={Uri.EscapeDataString(Utc(end))}" +
+                "&$select=id,subject,start,end,type&$top=50";
+
+            return SendGetRawAsync(url, cancellationToken, TimeZoneInfo.Local.Id);
+        }
+
+        /// <summary>GET /calendarView/delta over a window (delta token in the response).</summary>
+        public Task<string> CalendarViewDeltaAsync(
+            AuthFlow flow, string? upn, DateTimeOffset start, DateTimeOffset end,
+            CancellationToken cancellationToken)
+        {
+            string url =
+                $"{MailboxBase(flow, upn)}/calendarView/delta" +
+                $"?startDateTime={Uri.EscapeDataString(Utc(start))}" +
+                $"&endDateTime={Uri.EscapeDataString(Utc(end))}";
+
+            return SendGetRawAsync(url, cancellationToken, TimeZoneInfo.Local.Id);
         }
 
         public void Dispose() => _http.Dispose();
