@@ -2,31 +2,22 @@
 
 namespace CalendarExpansionVisualizer
 {
-    /// <summary>
-    /// Test harness for exercising individual Microsoft Graph calls against the
-    /// mailbox/auth context selected on <see cref="frmMain"/>. All calls flow through
-    /// <see cref="GraphCalendarClient"/>, so they are written to the same log file
-    /// (with the OAuth token redacted) when logging is enabled.
-    /// </summary>
-    internal sealed class TestContext
-    {
-        public required string AccessToken { get; init; }
-        public required AuthFlow Flow { get; init; }
-        public required string GraphRoot { get; init; }
-        public string? Upn { get; init; }
-        public required string LogPath { get; init; }
-        public bool LogEnabled { get; init; }
-        public string CloudName { get; init; } = string.Empty;
-    }
-
     public partial class frmTests : Form
     {
-        private readonly TestContext _context;
+        private readonly TestContext _context = null!;
 
-        internal frmTests(TestContext context)
+        /// <summary>
+        /// Parameterless constructor required by the Windows Forms designer. Not used at
+        /// runtime; use <see cref="frmTests(TestContext)"/> to supply the auth context.
+        /// </summary>
+        public frmTests()
+        {
+            InitializeComponent();
+        }
+
+        internal frmTests(TestContext context) : this()
         {
             _context = context;
-            InitializeComponent();
 
             DateTime start = DateTime.Now.Date;
             dtpStart.Value = start;
