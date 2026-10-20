@@ -176,7 +176,6 @@ namespace CalendarExpansionVisualizer
                 lblTokenStatus.Text = $"Token acquired (expires {result.ExpiresOn.LocalDateTime:HH:mm})";
                 btnFetch.Enabled = true;
                 btnCheck.Enabled = true;
-                btnList.Enabled = true;
                 btnTests.Enabled = true;
                 lblStatus.Text = "Token acquired. Ready to fetch calendar.";
             }
@@ -185,7 +184,6 @@ namespace CalendarExpansionVisualizer
                 _accessToken = null;
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
-                btnList.Enabled = false;
                 btnTests.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
@@ -197,7 +195,6 @@ namespace CalendarExpansionVisualizer
                 _accessToken = null;
                 btnFetch.Enabled = false;
                 btnCheck.Enabled = false;
-                btnList.Enabled = false;
                 btnTests.Enabled = false;
                 lblTokenStatus.ForeColor = Color.Firebrick;
                 lblTokenStatus.Text = "Token failed";
@@ -273,6 +270,16 @@ namespace CalendarExpansionVisualizer
 
         private void BindResults(List<CalendarInstance> events)
         {
+            var meetingRows = events
+                .Select(ev => new MeetingRow
+                {
+                    Subject = ev.Subject,
+                    SortKey = ev.Start ?? DateTimeOffset.MaxValue,
+                    EventId = string.IsNullOrEmpty(ev.SeriesMasterId) ? ev.Id : ev.SeriesMasterId,
+                    IsRecurring = !string.IsNullOrEmpty(ev.SeriesMasterId)
+                })
+                .ToList();
+
             var rows = events
                 .Select(ev => new
                 {
@@ -294,8 +301,18 @@ namespace CalendarExpansionVisualizer
             dgvEvents.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvEvents.RowHeadersVisible = true;
             _checkMode = false;
-            _lastCheckRows = null;
+            _lastCheckRows = meetingRows;
             dgvEvents.DataSource = rows;
+
+            for (int i = 0; i < dgvEvents.Rows.Count && i < meetingRows.Count; i++)
+            {
+                dgvEvents.Rows[i].Tag = meetingRows[i];
+            }
+
+            foreach (DataGridViewColumn column in dgvEvents.Columns)
+            {
+                column.SortMode = DataGridViewColumnSortMode.NotSortable;
+            }
         }
 
         private async void btnCheck_Click(object? sender, EventArgs e)
@@ -339,8 +356,6 @@ namespace CalendarExpansionVisualizer
             }
 
             SetBusy(true, "Checking calendar...");
-            lblElapsed.Text = "";
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 using var client = new GraphCalendarClient(
@@ -372,31 +387,8 @@ namespace CalendarExpansionVisualizer
             }
             finally
             {
-                stopwatch.Stop();
-                lblElapsed.Text = $"Took {FormatElapsed(stopwatch.Elapsed)}";
                 SetBusy(false, null);
             }
-        }
-
-        /// <summary>
-        /// Formats a duration compactly as minutes, seconds and milliseconds
-        /// (e.g. "1m 05s 320ms", "12s 004ms", "742ms").
-        /// </summary>
-        private static string FormatElapsed(TimeSpan elapsed)
-        {
-            int minutes = (int)elapsed.TotalMinutes;
-            int seconds = elapsed.Seconds;
-            int millis = elapsed.Milliseconds;
-
-            if (minutes > 0)
-            {
-                return $"{minutes}m {seconds:00}s {millis:000}ms";
-            }
-            if (seconds > 0)
-            {
-                return $"{seconds}s {millis:000}ms";
-            }
-            return $"{millis}ms";
         }
 
         private static async Task<List<MeetingRow>> BuildMeetingRowsAsync(
@@ -697,9 +689,10 @@ namespace CalendarExpansionVisualizer
             {
                 HeaderText = "Subject",
                 Name = "colSubject",
-                Width = 280,
+                Width = 336,
                 ReadOnly = true,
-                Frozen = true
+                Frozen = true,
+                SortMode = DataGridViewColumnSortMode.NotSortable
             };
             dgvEvents.Columns.Add(subjectCol);
 
@@ -711,7 +704,7 @@ namespace CalendarExpansionVisualizer
                 {
                     HeaderText = d.ToString("M/d"),
                     Name = "col_" + d.ToString("yyyyMMdd"),
-                    Width = 46,
+                    Width = 55,
                     ReadOnly = true,
                     SortMode = DataGridViewColumnSortMode.NotSortable
                 };
@@ -725,6 +718,7 @@ namespace CalendarExpansionVisualizer
             {
                 int rowIndex = dgvEvents.Rows.Add();
                 DataGridViewRow gridRow = dgvEvents.Rows[rowIndex];
+                gridRow.Tag = meeting;
                 gridRow.Cells[0].Value = meeting.Subject;
                 gridRow.Cells[0].Style.ForeColor = meeting.SubjectColor;
 
@@ -765,101 +759,120 @@ namespace CalendarExpansionVisualizer
 
         private void btnTests_Click(object? sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(_accessToken))
+            SetBusy(true, null);
+            try
             {
-                MessageBox.Show(this, "Acquire a token first.",
-                    "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                if (string.IsNullOrEmpty(_accessToken))
+                {
+                    MessageBox.Show(this, "Acquire a token first.",
+                        "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (_flow == AuthFlow.Application && string.IsNullOrWhiteSpace(txtUpn.Text))
+                {
+                    MessageBox.Show(this, "Mailbox UPN is required for the application flow.",
+                        "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var context = new TestContext
+                {
+                    AccessToken = _accessToken,
+                    Flow = _flow,
+                    GraphRoot = CurrentGraphRoot(),
+                    Upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
+                    LogPath = txtLogPath.Text.Trim(),
+                    LogEnabled = chkEnableLog.Checked,
+                    CloudName = CurrentCloud().ToString()
+                };
+
+                using var tests = new frmTests(context);
+                tests.ShowDialog(this);
             }
-
-            if (_flow == AuthFlow.Application && string.IsNullOrWhiteSpace(txtUpn.Text))
+            finally
             {
-                MessageBox.Show(this, "Mailbox UPN is required for the application flow.",
-                    "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                SetBusy(false, null);
             }
-
-            var context = new TestContext
-            {
-                AccessToken = _accessToken,
-                Flow = _flow,
-                GraphRoot = CurrentGraphRoot(),
-                Upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null,
-                LogPath = txtLogPath.Text.Trim(),
-                LogEnabled = chkEnableLog.Checked,
-                CloudName = CurrentCloud().ToString()
-            };
-
-            using var tests = new frmTests(context);
-            tests.ShowDialog(this);
         }
 
-        private async void btnList_Click(object? sender, EventArgs e)
+        private MeetingRow? SelectedMeetingRow()
         {
+            return dgvEvents.CurrentRow?.Tag as MeetingRow;
+        }
+
+        private void dgvEvents_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right && e.RowIndex >= 0)
+            {
+                int columnIndex = e.ColumnIndex >= 0 ? e.ColumnIndex : 0;
+                dgvEvents.CurrentCell = dgvEvents.Rows[e.RowIndex].Cells[columnIndex];
+            }
+        }
+
+        private void cmsEvents_Opening(
+            object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            MeetingRow? row = SelectedMeetingRow();
+            e.Cancel = row is null || string.IsNullOrWhiteSpace(row.EventId);
+        }
+
+        private void cmsEvents_Closed(object? sender, ToolStripDropDownClosedEventArgs e)
+        {
+            SetBusy(false, null);
+        }
+
+        private async void mnuShowGeneratedIcs_Click(object? sender, EventArgs e)
+        {
+            SetBusy(true, null);
+            MeetingRow? row = SelectedMeetingRow();
+            if (row is null || string.IsNullOrWhiteSpace(row.EventId))
+            {
+                MessageBox.Show(this, "No calendar master is available for the selected row.",
+                    "Generated ICS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                SetBusy(false, null);
+                return;
+            }
+
             if (string.IsNullOrEmpty(_accessToken))
             {
                 MessageBox.Show(this, "Acquire a token first.",
                     "No token", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetBusy(false, null);
                 return;
             }
 
-            if (!_checkMode || _lastCheckRows is null || _lastCheckRows.Count == 0)
-            {
-                MessageBox.Show(this, "Run \"Check\" first, then select a recurring series row to list.",
-                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            int rowIndex = dgvEvents.CurrentCell?.RowIndex ?? -1;
-            if (rowIndex < 0 || rowIndex >= _lastCheckRows.Count)
-            {
-                MessageBox.Show(this, "Select a recurring series row in the grid first.",
-                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            MeetingRow row = _lastCheckRows[rowIndex];
-            if (!row.IsRecurring || string.IsNullOrEmpty(row.EventId))
-            {
-                MessageBox.Show(this, "The selected row is not a recurring series.",
-                    "List", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            bool wantExceptions = rbListExceptions.Checked || rbListBoth.Checked;
-            bool wantDeletions = rbListDeletions.Checked || rbListBoth.Checked;
-            bool showKindLabel = rbListBoth.Checked;
-
-            SetBusy(true, "Listing series changes...");
+            SetBusy(true, "Loading calendar master and generating ICS...");
             try
             {
                 string? upn = _flow == AuthFlow.Application ? txtUpn.Text.Trim() : null;
                 using var client = new GraphCalendarClient(
                     _accessToken, txtLogPath.Text.Trim(), chkEnableLog.Checked, CurrentGraphRoot());
-                EventDetails? details = await client.GetEventDetailsAsync(
+                EventDetails? master = await client.GetCalendarMasterDetailsAsync(
                     _flow, upn, row.EventId, CancellationToken.None);
 
-                if (details is null)
+                if (master is null)
                 {
-                    MessageBox.Show(this, "Could not load event details.",
-                        "List", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(this, "The calendar master record could not be loaded.",
+                        "Generated ICS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-                (string body, string title) = RecurrenceChangeReport.Build(
-                    details.Subject, details.SeriesChanges, wantExceptions, wantDeletions, showKindLabel);
+                if (row.IsRecurring &&
+                    !string.Equals(master.Type, "seriesMaster", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Graph returned event type '{master.Type}' instead of the recurring series master.");
+                }
 
-                using var form = new EventInformationForm(title, body, Array.Empty<WarningLine>());
+                string ics = IcsGenerator.Generate(master);
+                using var form = new frmGeneratedICS(master.Subject, ics);
                 form.ShowDialog(this);
-
-                int shown = details.SeriesChanges.Count(c =>
-                    (c.Kind == RecurChangeKind.Exception && wantExceptions) ||
-                    (c.Kind == RecurChangeKind.Deletion && wantDeletions));
-                lblStatus.Text = $"Listed {shown} change(s) for the entire series.";
+                lblStatus.Text = "Generated ICS from the calendar master record.";
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Failed to list series changes:\n\n{ex.Message}",
+                MessageBox.Show(this, $"Failed to generate ICS:\n\n{ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
@@ -881,7 +894,10 @@ namespace CalendarExpansionVisualizer
                 return;
             }
 
-            MeetingRow row = _lastCheckRows[e.RowIndex];
+            if (dgvEvents.Rows[e.RowIndex].Tag is not MeetingRow row)
+            {
+                return;
+            }
             if (string.IsNullOrEmpty(row.EventId))
             {
                 MessageBox.Show(this, "No event id is available for this row.",
@@ -954,7 +970,10 @@ namespace CalendarExpansionVisualizer
                 return;
             }
 
-            MeetingRow row = _lastCheckRows[e.RowIndex];
+            if (dgvEvents.Rows[e.RowIndex].Tag is not MeetingRow row)
+            {
+                return;
+            }
 
             // Show a cached summary immediately if we already computed it.
             if (row.SeriesStatusText is not null)
@@ -1302,32 +1321,41 @@ namespace CalendarExpansionVisualizer
 
         private void btnBrowseLog_Click(object? sender, EventArgs e)
         {
-            using var dialog = new SaveFileDialog
+            SetBusy(true, null);
+            try
             {
-                Title = "Select log file",
-                Filter = "Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*",
-                FileName = Path.GetFileName(txtLogPath.Text),
-                OverwritePrompt = false
-            };
-
-            if (!string.IsNullOrWhiteSpace(txtLogPath.Text))
-            {
-                string? dir = Path.GetDirectoryName(txtLogPath.Text);
-                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                using var dialog = new SaveFileDialog
                 {
-                    dialog.InitialDirectory = dir;
+                    Title = "Select log file",
+                    Filter = "Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*",
+                    FileName = Path.GetFileName(txtLogPath.Text),
+                    OverwritePrompt = false
+                };
+
+                if (!string.IsNullOrWhiteSpace(txtLogPath.Text))
+                {
+                    string? dir = Path.GetDirectoryName(txtLogPath.Text);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        dialog.InitialDirectory = dir;
+                    }
+                }
+
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    txtLogPath.Text = dialog.FileName;
                 }
             }
-
-            if (dialog.ShowDialog(this) == DialogResult.OK)
+            finally
             {
-                txtLogPath.Text = dialog.FileName;
+                SetBusy(false, null);
             }
         }
 
         private void SetBusy(bool busy, string? status)
         {
             UseWaitCursor = busy;
+            Cursor.Current = busy ? Cursors.WaitCursor : Cursors.Default;
             grpAuth.Enabled = !busy;
             grpQuery.Enabled = !busy;
             if (status is not null)
@@ -1337,6 +1365,11 @@ namespace CalendarExpansionVisualizer
         }
 
         private void frmMain_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void grpAuth_Enter(object sender, EventArgs e)
         {
 
         }

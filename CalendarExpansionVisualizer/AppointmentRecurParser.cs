@@ -33,6 +33,10 @@ namespace CalendarExpansionVisualizer
         public DateTime End { get; set; }
         public string? Subject { get; set; }
         public string? Location { get; set; }
+        public int? ReminderMinutesBeforeStart { get; set; }
+        public bool? IsReminderOn { get; set; }
+        public int? BusyStatus { get; set; }
+        public bool? IsAllDay { get; set; }
 
         // Attachment differences between this exception occurrence and the series master
         // (added or removed files). Only populated for exceptions and only when the
@@ -346,6 +350,10 @@ namespace CalendarExpansionVisualizer
 
                         string? subject = null;
                         string? location = null;
+                        int? reminderMinutesBeforeStart = null;
+                        bool? isReminderOn = null;
+                        int? busyStatus = null;
+                        bool? isAllDay = null;
 
                         if ((flags & ARO_SUBJECT) != 0)
                         {
@@ -354,17 +362,24 @@ namespace CalendarExpansionVisualizer
                             subject = ReadAnsi(len2);
                         }
                         if ((flags & ARO_MEETINGTYPE) != 0) _ = ReadU32();
-                        if ((flags & ARO_REMINDERDELTA) != 0) _ = ReadU32();
-                        if ((flags & ARO_REMINDER) != 0) _ = ReadU32();
+                        if ((flags & ARO_REMINDERDELTA) != 0)
+                        {
+                            uint value = ReadU32();
+                            reminderMinutesBeforeStart = value <= int.MaxValue ? (int)value : null;
+                        }
+                        if ((flags & ARO_REMINDER) != 0)
+                        {
+                            isReminderOn = ReadU32() != 0;
+                        }
                         if ((flags & ARO_LOCATION) != 0)
                         {
                             _ = ReadU16();               // LocationLength (chars + 1)
                             ushort len2 = ReadU16();     // LocationLength2 (chars)
                             location = ReadAnsi(len2);
                         }
-                        if ((flags & ARO_BUSYSTATUS) != 0) _ = ReadU32();
+                        if ((flags & ARO_BUSYSTATUS) != 0) busyStatus = (int)ReadU32();
                         if ((flags & ARO_ATTACHMENT) != 0) _ = ReadU32();
-                        if ((flags & ARO_SUBTYPE) != 0) _ = ReadU32();
+                        if ((flags & ARO_SUBTYPE) != 0) isAllDay = ReadU32() != 0;
                         if ((flags & ARO_APPTCOLOR) != 0) _ = ReadU32();
 
                         DateTime origStart = FromMinutes(originalStartDate).AddMinutes(startTimeOffset);
@@ -377,7 +392,11 @@ namespace CalendarExpansionVisualizer
                             Start = FromMinutes(startDateTime),
                             End = FromMinutes(endDateTime),
                             Subject = string.IsNullOrEmpty(subject) ? null : subject,
-                            Location = string.IsNullOrEmpty(location) ? null : location
+                            Location = string.IsNullOrEmpty(location) ? null : location,
+                            ReminderMinutesBeforeStart = reminderMinutesBeforeStart,
+                            IsReminderOn = isReminderOn,
+                            BusyStatus = busyStatus,
+                            IsAllDay = isAllDay
                         });
                     }
 
