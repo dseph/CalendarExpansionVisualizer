@@ -9,6 +9,8 @@ namespace CalendarExpansionVisualizer
         private List<MeetingRow>? _lastCheckRows;
         private bool _checkMode;
         private bool _useMicrosoftAppId = true;
+        private CancellationTokenSource? _tokenAcquisitionCts;
+        private bool _isClosing;
 
         // The date window used by the most recent Check, reused when computing in-range
         // attachment metrics for the Event Information form.
@@ -70,6 +72,13 @@ namespace CalendarExpansionVisualizer
 
             dgvEvents.CellDoubleClick += dgvEvents_CellDoubleClick;
             dgvEvents.CellClick += dgvEvents_CellClick;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _isClosing = true;
+            _tokenAcquisitionCts?.Cancel();
+            base.OnFormClosing(e);
         }
 
         private void AuthFlowChanged(object? sender, EventArgs e)
@@ -161,15 +170,22 @@ namespace CalendarExpansionVisualizer
             }
 
             SetBusy(true, "Acquiring token...");
+            using var tokenAcquisitionCts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            _tokenAcquisitionCts = tokenAcquisitionCts;
             try
             {
                 AuthenticationResult result = _flow == AuthFlow.Application
                     ? await AuthService.AcquireApplicationAsync(
                         tenantId, clientId,
-                        txtClientSecret.Text, CurrentCloud(), CancellationToken.None)
+                        txtClientSecret.Text, CurrentCloud(), tokenAcquisitionCts.Token)
                     : await AuthService.AcquireDelegatedAsync(
                         tenantId, clientId,
-                        txtRedirectUri.Text.Trim(), CurrentCloud(), CancellationToken.None);
+                        txtRedirectUri.Text.Trim(), CurrentCloud(), tokenAcquisitionCts.Token);
+
+                if (_isClosing)
+                {
+                    return;
+                }
 
                 _accessToken = result.AccessToken;
                 lblTokenStatus.ForeColor = Color.Green;
@@ -178,6 +194,39 @@ namespace CalendarExpansionVisualizer
                 btnCheck.Enabled = true;
                 btnTests.Enabled = true;
                 lblStatus.Text = "Token acquired. Ready to fetch calendar.";
+            }
+            catch (OperationCanceledException)
+            {
+                if (!_isClosing)
+                {
+                    _accessToken = null;
+                    btnFetch.Enabled = false;
+                    btnCheck.Enabled = false;
+                    btnTests.Enabled = false;
+                    lblTokenStatus.ForeColor = Color.DarkOrange;
+                    lblTokenStatus.Text = "Authentication canceled or timed out";
+                    lblStatus.Text = "Authentication canceled or timed out after one minute.";
+                }
+            }
+            catch (MsalClientException ex) when (
+                (string.Equals(ex.ErrorCode, "authentication_canceled",
+                    StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(ex.ErrorCode, "authentication_cancelled",
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!_isClosing)
+                {
+                    _accessToken = null;
+                    btnFetch.Enabled = false;
+                    btnCheck.Enabled = false;
+                    btnTests.Enabled = false;
+                    lblTokenStatus.ForeColor = Color.DarkOrange;
+                    lblTokenStatus.Text = "Authentication canceled";
+                    lblStatus.Text = "Authentication canceled.";
+                }
+            }
+            catch (MsalException) when (_isClosing && tokenAcquisitionCts.IsCancellationRequested)
+            {
             }
             catch (MsalException ex)
             {
@@ -203,7 +252,15 @@ namespace CalendarExpansionVisualizer
             }
             finally
             {
-                SetBusy(false, null);
+                if (ReferenceEquals(_tokenAcquisitionCts, tokenAcquisitionCts))
+                {
+                    _tokenAcquisitionCts = null;
+                }
+
+                if (!_isClosing)
+                {
+                    SetBusy(false, null);
+                }
             }
         }
 
