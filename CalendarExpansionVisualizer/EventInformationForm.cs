@@ -72,8 +72,18 @@ namespace CalendarExpansionVisualizer
 
         private void btnListChanges_Click(object? sender, EventArgs e)
         {
-            using var form = new RecurrenceChangesForm(_changesSubject, _recurrenceChanges);
-            form.ShowDialog(this);
+            UseWaitCursor = true;
+            Cursor.Current = Cursors.WaitCursor;
+            try
+            {
+                using var form = new RecurrenceChangesForm(_changesSubject, _recurrenceChanges);
+                form.ShowDialog(this);
+            }
+            finally
+            {
+                UseWaitCursor = false;
+                Cursor.Current = Cursors.Default;
+            }
         }
 
         private void pnlButtons_Paint(object sender, PaintEventArgs e)

@@ -432,6 +432,7 @@ namespace CalendarExpansionVisualizer
         private void SetBusy(bool busy)
         {
             UseWaitCursor = busy;
+            Cursor.Current = busy ? Cursors.WaitCursor : Cursors.Default;
             grpInputs.Enabled = !busy;
             grpTests.Enabled = !busy;
             chkShowResults.Enabled = !busy;
@@ -444,6 +445,11 @@ namespace CalendarExpansionVisualizer
         }
 
         private void frmTests_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void grpTests_Enter(object sender, EventArgs e)
         {
 
         }

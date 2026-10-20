@@ -30,7 +30,17 @@ namespace CalendarExpansionVisualizer
 
         private void btnList_Click(object? sender, EventArgs e)
         {
-            RenderListing();
+            UseWaitCursor = true;
+            Cursor.Current = Cursors.WaitCursor;
+            try
+            {
+                RenderListing();
+            }
+            finally
+            {
+                UseWaitCursor = false;
+                Cursor.Current = Cursors.Default;
+            }
         }
 
         private void RenderListing()

@@ -206,6 +206,7 @@
             grpTests.TabIndex = 1;
             grpTests.TabStop = false;
             grpTests.Text = "Tests to run";
+            grpTests.Enter += grpTests_Enter;
             // 
             // rbGetSchedule
             // 

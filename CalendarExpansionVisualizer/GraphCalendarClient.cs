@@ -16,18 +16,51 @@ namespace CalendarExpansionVisualizer
         string Id,
         long? MessageSize = null);
 
+    internal sealed class EventAttendee
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Response { get; set; } = string.Empty;
+    }
+
     internal sealed class EventDetails
     {
         public string Id { get; set; } = string.Empty;
+        public string SeriesMasterId { get; set; } = string.Empty;
         public string Subject { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string Start { get; set; } = string.Empty;
         public string End { get; set; } = string.Empty;
+        public string StartDateTime { get; set; } = string.Empty;
+        public string StartTimeZone { get; set; } = string.Empty;
+        public string EndDateTime { get; set; } = string.Empty;
+        public string EndTimeZone { get; set; } = string.Empty;
+        public string OriginalStartTimeZone { get; set; } = string.Empty;
+        public string OriginalEndTimeZone { get; set; } = string.Empty;
         public string Organizer { get; set; } = string.Empty;
+        public string OrganizerName { get; set; } = string.Empty;
+        public string OrganizerAddress { get; set; } = string.Empty;
         public List<string> Attendees { get; } = new();
+        public List<EventAttendee> StructuredAttendees { get; } = new();
         public string ICalUId { get; set; } = string.Empty;
         public string CleanGlobalObjectId { get; set; } = string.Empty;
         public RecurrenceInfo? Recurrence { get; set; }
+        public string BodyContent { get; set; } = string.Empty;
+        public string BodyContentType { get; set; } = string.Empty;
+        public string Location { get; set; } = string.Empty;
+        public bool IsAllDay { get; set; }
+        public List<string> Categories { get; } = new();
+        public bool IsReminderOn { get; set; }
+        public int? ReminderMinutesBeforeStart { get; set; }
+        public string Sensitivity { get; set; } = string.Empty;
+        public string ShowAs { get; set; } = string.Empty;
+        public bool IsCancelled { get; set; }
+        public bool ResponseRequested { get; set; }
+        public DateTimeOffset? CreatedDateTime { get; set; }
+        public DateTimeOffset? LastModifiedDateTime { get; set; }
+        public string OnlineMeetingUrl { get; set; } = string.Empty;
+        public string WebLink { get; set; } = string.Empty;
 
         // Whole-series counts read directly from the master's PidLidAppointmentRecur
         // blob (no per-instance searching). Null when unavailable/not applicable.
@@ -258,7 +291,8 @@ namespace CalendarExpansionVisualizer
         /// attendees, iCalUId, recurrence and the CleanGlobalObjectId extended property.
         /// </summary>
         public async Task<EventDetails?> GetEventDetailsAsync(
-            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken)
+            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken,
+            string? preferredTimeZone = null)
         {
             string basePath = flow == AuthFlow.Application
                 ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
@@ -269,10 +303,17 @@ namespace CalendarExpansionVisualizer
             string filter = $"id eq '{cleanGlobalObjectIdProp}'";
             string expand = "singleValueExtendedProperties($filter=" + Uri.EscapeDataString(filter) + ")";
 
-            string url = $"{basePath}?$select=id,subject,start,end,organizer,attendees,iCalUId,type,recurrence,hasAttachments" +
+            string url = $"{basePath}?$select=id,seriesMasterId,subject,start,end,originalStartTimeZone,originalEndTimeZone," +
+                         "organizer,attendees,iCalUId,type,recurrence,hasAttachments," +
+                         "body,location,isAllDay,categories,isReminderOn,reminderMinutesBeforeStart,sensitivity,showAs," +
+                         "isCancelled,responseRequested,createdDateTime,lastModifiedDateTime,onlineMeetingUrl,webLink" +
                          $"&$expand={expand},attachments($select=id,name,size)";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(preferredTimeZone))
+            {
+                request.Headers.Add("Prefer", $"outlook.timezone=\"{preferredTimeZone}\"");
+            }
             using var response = await _http.SendAsync(request, cancellationToken);
             string content = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -288,18 +329,70 @@ namespace CalendarExpansionVisualizer
             var details = new EventDetails
             {
                 Id = GetString(root, "id"),
+                SeriesMasterId = GetString(root, "seriesMasterId"),
                 Subject = GetString(root, "subject"),
                 Type = GetString(root, "type"),
                 ICalUId = GetString(root, "iCalUId"),
                 Start = GetDateTimeText(root, "start"),
-                End = GetDateTimeText(root, "end")
+                End = GetDateTimeText(root, "end"),
+                IsAllDay = GetBoolean(root, "isAllDay"),
+                IsReminderOn = GetBoolean(root, "isReminderOn"),
+                ReminderMinutesBeforeStart = GetInt32(root, "reminderMinutesBeforeStart"),
+                Sensitivity = GetString(root, "sensitivity"),
+                ShowAs = GetString(root, "showAs"),
+                IsCancelled = GetBoolean(root, "isCancelled"),
+                ResponseRequested = GetBoolean(root, "responseRequested"),
+                CreatedDateTime = GetDateTimeOffset(root, "createdDateTime"),
+                LastModifiedDateTime = GetDateTimeOffset(root, "lastModifiedDateTime"),
+                OnlineMeetingUrl = GetString(root, "onlineMeetingUrl"),
+                WebLink = GetString(root, "webLink"),
+                OriginalStartTimeZone = GetString(root, "originalStartTimeZone"),
+                OriginalEndTimeZone = GetString(root, "originalEndTimeZone")
             };
+
+            PopulateDateTime(root, "start", out string startDateTime, out string startTimeZone);
+            details.StartDateTime = startDateTime;
+            details.StartTimeZone = string.IsNullOrWhiteSpace(startTimeZone)
+                ? details.OriginalStartTimeZone
+                : startTimeZone;
+            PopulateDateTime(root, "end", out string endDateTime, out string endTimeZone);
+            details.EndDateTime = endDateTime;
+            details.EndTimeZone = string.IsNullOrWhiteSpace(endTimeZone)
+                ? details.OriginalEndTimeZone
+                : endTimeZone;
+
+            if (root.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.Object)
+            {
+                details.BodyContent = GetString(body, "content");
+                details.BodyContentType = GetString(body, "contentType");
+            }
+
+            if (root.TryGetProperty("location", out var location) &&
+                location.ValueKind == JsonValueKind.Object)
+            {
+                details.Location = GetString(location, "displayName");
+            }
+
+            if (root.TryGetProperty("categories", out var categories) &&
+                categories.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement category in categories.EnumerateArray())
+                {
+                    if (category.ValueKind == JsonValueKind.String &&
+                        category.GetString() is { Length: > 0 } value)
+                    {
+                        details.Categories.Add(value);
+                    }
+                }
+            }
 
             if (root.TryGetProperty("organizer", out var org) &&
                 org.TryGetProperty("emailAddress", out var orgEmail))
             {
                 string name = GetString(orgEmail, "name");
                 string addr = GetString(orgEmail, "address");
+                details.OrganizerName = name;
+                details.OrganizerAddress = addr;
                 details.Organizer = string.IsNullOrEmpty(name) ? addr : $"{name} <{addr}>";
             }
 
@@ -324,6 +417,13 @@ namespace CalendarExpansionVisualizer
 
                     string display = string.IsNullOrEmpty(name) ? addr : $"{name} <{addr}>";
                     details.Attendees.Add($"{display} [{attType}, {respStatus}]");
+                    details.StructuredAttendees.Add(new EventAttendee
+                    {
+                        Name = name,
+                        Address = addr,
+                        Type = attType,
+                        Response = respStatus
+                    });
                 }
             }
 
@@ -394,6 +494,50 @@ namespace CalendarExpansionVisualizer
             await PopulateMessageSizeAsync(basePath, details, cancellationToken);
 
             return details;
+        }
+
+        /// <summary>
+        /// Resolves an occurrence or exception to its series master before loading details.
+        /// A non-recurring event is its own calendar master record.
+        /// </summary>
+        public async Task<EventDetails?> GetCalendarMasterDetailsAsync(
+            AuthFlow flow, string? upn, string eventId, CancellationToken cancellationToken)
+        {
+            string basePath = flow == AuthFlow.Application
+                ? $"{GraphBase}/users/{Uri.EscapeDataString(upn ?? string.Empty)}/events/{Uri.EscapeDataString(eventId)}"
+                : $"{GraphBase}/me/events/{Uri.EscapeDataString(eventId)}";
+            string url = $"{basePath}?$select=id,type,seriesMasterId,originalStartTimeZone";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            string content = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"Graph returned {(int)response.StatusCode} {response.ReasonPhrase}: {content}");
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            JsonElement root = doc.RootElement;
+            string type = GetString(root, "type");
+            string masterId = GetString(root, "seriesMasterId");
+            string originalStartTimeZone = GetString(root, "originalStartTimeZone");
+
+            if (string.Equals(type, "occurrence", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type, "exception", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(masterId))
+                {
+                    throw new InvalidOperationException(
+                        "Graph identified the selected event as a recurrence instance but did not return its series master id.");
+                }
+
+                return await GetEventDetailsAsync(
+                    flow, upn, masterId, cancellationToken, originalStartTimeZone);
+            }
+
+            return await GetEventDetailsAsync(
+                flow, upn, eventId, cancellationToken, originalStartTimeZone);
         }
 
         /// <summary>
@@ -989,6 +1133,39 @@ namespace CalendarExpansionVisualizer
             => element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String
                 ? prop.GetString() ?? string.Empty
                 : string.Empty;
+
+        private static bool GetBoolean(JsonElement element, string name)
+            => element.TryGetProperty(name, out var prop) &&
+               (prop.ValueKind == JsonValueKind.True ||
+                prop.ValueKind == JsonValueKind.False) &&
+               prop.GetBoolean();
+
+        private static int? GetInt32(JsonElement element, string name)
+            => element.TryGetProperty(name, out var prop) && prop.TryGetInt32(out int value)
+                ? value
+                : null;
+
+        private static DateTimeOffset? GetDateTimeOffset(JsonElement element, string name)
+            => element.TryGetProperty(name, out var prop) &&
+               prop.ValueKind == JsonValueKind.String &&
+               DateTimeOffset.TryParse(prop.GetString(), out DateTimeOffset value)
+                ? value
+                : null;
+
+        private static void PopulateDateTime(
+            JsonElement element, string name, out string dateTime, out string timeZone)
+        {
+            dateTime = string.Empty;
+            timeZone = string.Empty;
+            if (!element.TryGetProperty(name, out var value) ||
+                value.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            dateTime = GetString(value, "dateTime");
+            timeZone = GetString(value, "timeZone");
+        }
 
         private static DateTimeOffset? GetDateTime(JsonElement element, string name)
         {
