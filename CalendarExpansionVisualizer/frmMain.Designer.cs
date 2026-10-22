@@ -52,6 +52,7 @@
             dgvEvents = new DataGridView();
             cmsEvents = new ContextMenuStrip(components);
             mnuShowGeneratedIcs = new ToolStripMenuItem();
+            mnuEventInformation = new ToolStripMenuItem();
             lblStatus = new Label();
             grpAuth.SuspendLayout();
             grpQuery.SuspendLayout();
@@ -337,7 +338,7 @@
             // btnFetch
             // 
             btnFetch.Enabled = false;
-            btnFetch.Location = new Point(725, 31);
+            btnFetch.Location = new Point(792, 32);
             btnFetch.Margin = new Padding(4);
             btnFetch.Name = "btnFetch";
             btnFetch.Size = new Size(150, 44);
@@ -349,7 +350,7 @@
             // btnCheck
             // 
             btnCheck.Enabled = false;
-            btnCheck.Location = new Point(888, 31);
+            btnCheck.Location = new Point(956, 33);
             btnCheck.Margin = new Padding(4);
             btnCheck.Name = "btnCheck";
             btnCheck.Size = new Size(162, 44);
@@ -401,10 +402,10 @@
             // btnTests
             // 
             btnTests.Enabled = false;
-            btnTests.Location = new Point(1076, 38);
+            btnTests.Location = new Point(1137, 32);
             btnTests.Margin = new Padding(4);
             btnTests.Name = "btnTests";
-            btnTests.Size = new Size(162, 40);
+            btnTests.Size = new Size(174, 44);
             btnTests.TabIndex = 6;
             btnTests.Text = "Tests";
             btnTests.UseVisualStyleBackColor = true;
@@ -429,9 +430,9 @@
             // cmsEvents
             // 
             cmsEvents.ImageScalingSize = new Size(24, 24);
-            cmsEvents.Items.AddRange(new ToolStripItem[] { mnuShowGeneratedIcs });
+            cmsEvents.Items.AddRange(new ToolStripItem[] { mnuShowGeneratedIcs, mnuEventInformation });
             cmsEvents.Name = "cmsEvents";
-            cmsEvents.Size = new Size(246, 36);
+            cmsEvents.Size = new Size(246, 68);
             cmsEvents.Closed += cmsEvents_Closed;
             cmsEvents.Opening += cmsEvents_Opening;
             // 
@@ -441,6 +442,13 @@
             mnuShowGeneratedIcs.Size = new Size(245, 32);
             mnuShowGeneratedIcs.Text = "Show Generated ICS";
             mnuShowGeneratedIcs.Click += mnuShowGeneratedIcs_Click;
+            // 
+            // mnuEventInformation
+            // 
+            mnuEventInformation.Name = "mnuEventInformation";
+            mnuEventInformation.Size = new Size(245, 32);
+            mnuEventInformation.Text = "Event Information";
+            mnuEventInformation.Click += mnuEventInformation_Click;
             // 
             // lblStatus
             // 
@@ -512,6 +520,7 @@
         private DataGridView dgvEvents;
         private ContextMenuStrip cmsEvents;
         private ToolStripMenuItem mnuShowGeneratedIcs;
+        private ToolStripMenuItem mnuEventInformation;
         private Label lblStatus;
         private Label label1;
     }

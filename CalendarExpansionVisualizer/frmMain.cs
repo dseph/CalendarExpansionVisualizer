@@ -872,6 +872,7 @@ namespace CalendarExpansionVisualizer
         {
             MeetingRow? row = SelectedMeetingRow();
             e.Cancel = row is null || string.IsNullOrWhiteSpace(row.EventId);
+            mnuEventInformation.Visible = _checkMode;
         }
 
         private void cmsEvents_Closed(object? sender, ToolStripDropDownClosedEventArgs e)
@@ -946,12 +947,22 @@ namespace CalendarExpansionVisualizer
                 return;
             }
 
+            await ShowEventInformationAsync(dgvEvents.Rows[e.RowIndex].Tag as MeetingRow);
+        }
+
+        private async void mnuEventInformation_Click(object? sender, EventArgs e)
+        {
+            await ShowEventInformationAsync(SelectedMeetingRow());
+        }
+
+        private async Task ShowEventInformationAsync(MeetingRow? row)
+        {
             if (string.IsNullOrEmpty(_accessToken))
             {
                 return;
             }
 
-            if (dgvEvents.Rows[e.RowIndex].Tag is not MeetingRow row)
+            if (row is null)
             {
                 return;
             }
